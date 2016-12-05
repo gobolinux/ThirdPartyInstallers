@@ -1,0 +1,311 @@
+#!/bin/bash
+
+source ScriptFunctions
+Import File
+Import GoboLinux
+Import Log
+Import OptionParser
+
+### Options ###################################################################
+
+scriptDescription="Install RPM packages on GoboLinux."
+scriptCredits="Copyright (C) Lucas C. Villa Real, 2016 - Released under the GNU GPL."
+helpOnNoArguments=yes
+scriptUsage="<file.rpm>"
+scriptExample="LibreOffice_5.2.3_Linux_x86-64_rpm"
+
+Add_Option_Entry "l" "symlink" "If symlinks should be created and wether they should be forced on conflicts."  "yes" "yes no force"
+Parse_Options "$@"
+
+### Functions #################################################################
+
+function uncompress_rpm() {
+    local payload_compressor=$(rpminfo --compressor "$rpmfile")
+    local cpiofile=$(basename "$rpmfile").cpio${payload_compressor:+.$payload_compressor}
+    
+    Log_Normal "Extracting RPM payload."
+    rpm2cpio < "$rpmfile" > "$cpiofile"
+
+    if [ "$payload_compressor" = "xz" ]
+    then
+        Log_Normal "Decompressing $payload_compressor payload."
+        xz -d "$cpiofile"
+        cpiofile=$(basename "$rpmfile").cpio
+    fi
+
+    Log_Normal "Extracting CPIO archive."
+    cpio -d -i < "$cpiofile"
+    rm -f -- "$cpiofile"
+}
+
+function flatten_rpm() {
+    Log_Normal "Flattening directory structure."
+    if [ -d "./usr" ]
+    then
+        cp -a ./usr/* .
+        rm -rf -- ./usr
+    fi
+    if [ -d "./etc" ]
+    then
+        mkdir -p Resources/Defaults/Settings
+        mv ./etc/* Resources/Defaults/Settings
+        rm -rf -- ./etc
+    fi
+    if [ -d "./opt" ]
+    then
+        mkdir -p Resources/Unmanaged/opt
+        if ls ./opt/* 2> /dev/null | grep -q "bin\|sbin\|lib\|lib64\|libexec\|include"
+        then
+            # 1-level dir: opt/pkgname/{bin,sbin,...}
+            cp -va ./opt/*/* .
+            for pkgdir in $(basename ./opt/*)
+            do
+                ln -s $goboIndex/ Resources/Unmanaged/opt/$pkgdir
+            done
+            realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
+        elif ls ./opt/*/* 2> /dev/null | grep -q "bin\|sbin\|lib\|lib64\|libexec\|include"
+        then
+            # 2-level dir: opt/vendorname/pkgname/{bin,sbin,...}
+            # XXX needs testing
+            cp -va ./opt/*/*/* .
+            for vendordir in $(basename ./opt/*)
+            do
+                mkdir -p Resources/Unmanaged/opt/$vendordir
+                for pkgdir in $(basename ./opt/*)
+                do
+                    ln -s $goboIndex/ Resources/Unmanaged/opt/$vendordir/$optdir
+                done
+            done
+            realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
+        fi
+        rm -rf -- ./opt
+    fi
+    if [ -d "./var" ]
+    then
+        mkdir -p Resources/Unmanaged/$goboVariable
+        find ./var | sed "s,./var,$goboVariable,g" >> Resources/UnmanagedFiles
+        mv ./var/* Resources/Unmanaged/$goboVariable
+        rm -rf -- ./var
+    fi
+    rmdir * 2> /dev/null
+}
+
+function populate_resources() {
+    local arch=$(rpminfo --arch "$rpmfile")
+    local description=$(rpminfo --description "$rpmfile")
+    
+    Log_Normal "Populating Resources."
+    mkdir -p Resources
+    if [ "$arch" ] && [ "$arch" != "noarch" ]
+    then
+        echo "$arch" > Resources/Architecture
+    fi
+    if [ "$description" ]
+    then
+        cat /dev/null > Resources/Description
+        echo "[Name] $(rpminfo --name $rpmfile)"               >> Resources/Description
+        echo "[Summary] $(rpminfo --summary $rpmfile)"         >> Resources/Description
+        echo "[License] $(rpminfo --license $rpmfile)"         >> Resources/Description
+        echo "[Description] $(rpminfo --description $rpmfile)" >> Resources/Description
+        echo "[Homepage] $(rpminfo --url $rpmfile)"            >> Resources/Description
+    fi
+}
+
+function lookup_symbol() {
+    local depname="$1"
+    local testversion="$2"
+    local arch="$3"
+    local symbol="$4"
+    local testarch=$(cat "$goboPrograms/$depname/$testversion/Resources/Architecture" 2> /dev/null)
+
+    if [ "$testarch" ] && [ "$testarch" = "$arch" ]
+    then
+        Log_Verbose "Looking for symbol $symbol on $goboPrograms/$depname/$testversion/$path"
+        if nm "$goboPrograms/$depname/$testversion/$path" 2> /dev/null | grep --max-count=1 -q "$symbol"
+        then
+            Log_Verbose "Match: $depname $testversion"
+            echo "$depname $testversion"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+function take_dependency_from_path() {
+    local originalpath="$1"
+    local path="$(echo $1 | sed 's,/usr,,g')"
+    local symbol="$2"
+    local fullpath="$(readlink -f $path)"
+    local arch=$(rpminfo --arch "$rpmfile")
+    local distro=$(rpminfo --distribution "$rpmfile")
+
+    local depname=
+    local depversion=
+
+    if echo "$fullpath" | grep -q "^${goboPrograms}"
+    then
+        # If given, we search for the presence of @symbol on the given target file.
+        # We iterate over different installations of the same program looking for
+        # that symbol. If none of the installations have it, we fallback to printing
+        # the dependency currently linked on /System/Index.
+        #
+        # Note that when iterating over installed programs we skip those entries whose
+        # Resources/Architecture do not match the output of $(rpminfo --arch).
+
+        depname=$(echo "$fullpath" | cut -d/ -f3)
+        depversion=$(echo "$fullpath" | cut -d/ -f4)
+        if [ "$symbol" ]
+        then
+            for testversion in $(ls $goboPrograms/$depname/ | grep -v "Settings\|Variable\|Current")
+            do
+                lookup_symbol "$depname" "$testversion" "$arch" "$symbol" && return 0
+            done
+        fi
+
+        Log_Verbose "Fallback: $depname $depversion"
+        echo "$depname $depversion"
+    else
+        # We have a path, but we don't have a link to that file under /System/Index.
+        # Our first attempt is to search over the list of installed programs anyhow,
+        # because some programs may not be currently activated.
+
+        for fullpath in $(ls $goboPrograms/*/*/$path 2> /dev/null | grep -v "Current")
+        do
+            depname=$(echo "$fullpath" | cut -d/ -f3)
+            testversion=$(echo "$fullpath" | cut -d/ -f4)
+            [ -z "$depversion" ] && depversion="$testversion"
+            Log_Verbose "Looking for symbol on candidate file $candidate ($depname, $testversion)"
+            lookup_symbol "$depname" "$testversion" "$arch" "$symbol" && return 0
+        done
+
+        # We don't have a match. If we have a file name that satisfies the path but
+        # that doesn't contain the requested symbol, we simply return that path.
+
+        if [ "$depname" ] && [ "$depversion" ]
+        then
+            echo "$depname $depversion"
+            return 0
+        fi
+
+        # We don't have a matching filename under /System/Index nor under /Programs/*/*.
+        # What we do now is to query remote RPM databases to find which package hosts the
+        # dependency file.
+
+        Log_Normal "Searching the remote RPM database for the package hosting $originalpath"
+        depname=$(RPMFinder --path="$originalpath" --arch="$arch" --distro="$distro")
+        if [ "$depname" ]
+        then
+            # TODO: we could now lookup the GoboLinux recipe store to find whether we
+            # have it or not
+            echo "$(GuessProgramCase $depname)"
+            return 0
+        fi
+    fi
+}
+
+function lookup_pkgname() {
+    local dependency="$1"
+    local pkgname=$(echo "$dependency" | cut -d'(' -f1)
+
+    # Do we have a GoboLinux package installed with a matching name?
+    for testname in $(ls $goboPrograms/*)
+    do
+        # Case-insensitive omparison (requires Bash 4)
+        if [ "${testname,,}" = "{$pkgname,,}" ]
+        then
+            echo "$pkgname" && return 0
+        fi
+    done
+
+    # Query the remote RPM database
+    return 1
+}
+
+function is_basic_symbol() {
+    local dependency="$1"
+    echo "$dependency" | grep -q "^rtld("  && return 0
+    return 1
+}
+
+function is_rpmlib_symbol() {
+    local dependency="$1"
+    echo "$dependency" | grep -q "^VersionedDependencies"  && return 0
+    echo "$dependency" | grep -q "^PayloadFilesHavePrefix" && return 0
+    echo "$dependency" | grep -q "^CompressedFileNames"    && return 0
+    echo "$dependency" | grep -q "^PayloadIs"              && return 0
+    return 1
+}
+
+function populate_dependencies_loop() {
+    rpminfo --dependencies "$rpmfile" | while read dependency
+    do
+        if echo "$dependency" | grep -q "^/"
+        then
+            depinfo=$(take_dependency_from_path $dependency "")
+            if [ "$depinfo" ]
+            then echo "$depinfo"
+            else echo "# Unresolved dependency: $dependency"
+            fi
+        elif echo "$dependency" | grep -q "^lib.*.so*"
+        then
+            libname=$(echo "$dependency" | cut -d'(' -f1)
+            wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
+            depinfo="$(take_dependency_from_path $goboLibraries/$libname $wantedsymbol)"
+            if [ "$depinfo" ]
+            then echo "$depinfo"
+            else echo "# Unresolved dependency: $dependency"
+            fi
+        elif is_basic_symbol "$dependency"
+        then
+            Log_Verbose "Skipping basic symbol: $dependency"
+        elif is_rpmlib_symbol "$dependency"
+        then
+            Log_Verbose "Skipping internal symbol: $dependency"
+        else
+            depinfo=$(lookup_pkgname "$dependency")
+            if [ "$depinfo" ]
+            then echo "$depinfo"
+            else echo "# Unresolved dependency: $dependency"
+            fi
+        fi
+    done
+}
+
+function populate_dependencies() {
+    Log_Normal "Processing dependencies."
+    populate_dependencies_loop | sort -n | uniq
+}
+
+### Operation #################################################################
+
+Is_Writable "${goboPrograms}" || Verify_Superuser
+
+symlink="$(Entry symlink)"
+rpmfile="$(readlink -f $(Arg 1))"
+programname=$(rpminfo --name "$rpmfile")
+programversion=$(printf "%s_%s" $(rpminfo --version "$rpmfile") $(rpminfo --release "$rpmfile"))
+
+PrepareProgram -t "$programname" "$programversion"
+
+# Update program name (PrepareProgram may have changed its case)
+programname=$(ls $goboPrograms/ | grep -i "^${programname}$")
+target="$goboPrograms/$programname/$programversion"
+
+# Installation pipeline
+Quiet pushd "$target" || Die "Could not enter $target"
+uncompress_rpm
+flatten_rpm
+populate_resources
+populate_dependencies
+Quiet popd
+
+# Symlinking
+if [ "$symlink" = "no" ]
+then
+    Log_Normal "Done."
+    exit 0
+fi
+
+[ -d "$target/Resources/Defaults/Settings" ] && UpdateSettings "$programname" "$programversion"
+SymlinkProgram "$programname" "$programversion"
+Log_Normal "Done."
