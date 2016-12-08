@@ -14,7 +14,8 @@ helpOnNoArguments=yes
 scriptUsage="<file.rpm>"
 scriptExample="LibreOffice_5.2.3_Linux_x86-64_rpm"
 
-Add_Option_Entry "l" "symlink" "If symlinks should be created and wether they should be forced on conflicts."  "yes" "yes no force"
+Add_Option_Entry   "l" "symlink" "If symlinks should be created and wether they should be forced on conflicts."  "yes" "yes no force"
+Add_Option_Boolean "W" "no-web"  "Do not search the web to resolve dependencies."
 Parse_Options "$@"
 
 ### Functions #################################################################
@@ -203,14 +204,17 @@ function take_dependency_from_path() {
         # What we do now is to query remote RPM databases to find which package hosts the
         # dependency file.
 
-        Log_Normal "Searching the remote RPM database for the package hosting $originalpath"
-        depname=$(RPMFinder --path="$originalpath" --arch="$arch" --distro="$distro")
-        if [ "$depname" ]
+        if ! Boolean "no-web"
         then
-            # TODO: we could now lookup the GoboLinux recipe store to find whether we
-            # have it or not
-            echo "$(GuessProgramCase $depname)"
-            return 0
+            Log_Normal "Searching the remote RPM database for the package hosting $originalpath"
+            depname=$(RPMFinder --path="$originalpath" --arch="$arch" --distro="$distro")
+            if [ "$depname" ]
+            then
+                # TODO: we could now lookup the GoboLinux recipe store to find whether we
+                # have it or not
+                echo "$(GuessProgramCase $depname)"
+                return 0
+            fi
         fi
     fi
 }
