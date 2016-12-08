@@ -40,6 +40,31 @@ function uncompress_rpm() {
 
 function flatten_rpm() {
     Log_Normal "Flattening directory structure."
+
+    function flatten_rpm_1_level() {
+        # Flatten 1-level dir: opt/pkgname/{bin,sbin,...}
+        cp -va ./opt/*/* .
+        for pkgdir in $(basename ./opt/*)
+        do
+            ln -s $goboIndex/ Resources/Unmanaged/opt/$pkgdir
+        done
+        realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
+    }
+
+    function flatten_rpm_2_levels() {
+        # Flatten 2-levels dir: opt/vendorname/pkgname/{bin,sbin,...}
+        cp -va ./opt/*/*/* .
+        for vendordir in $(basename ./opt/*)
+        do
+            mkdir -p Resources/Unmanaged/opt/$vendordir
+            for pkgdir in $(basename ./opt/*)
+            do
+                ln -s $goboIndex/ Resources/Unmanaged/opt/$vendordir/$optdir
+            done
+        done
+        realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
+    }
+
     if [ -d "./usr" ]
     then
         cp -a ./usr/* .
@@ -53,30 +78,17 @@ function flatten_rpm() {
     fi
     if [ -d "./opt" ]
     then
+        rootdirs="^bin$\|^sbin$\|^lib$\|^lib64$\|^libexec$\|^include$\|^share$"
         mkdir -p Resources/Unmanaged/opt
-        if ls ./opt/* 2> /dev/null | grep -q "bin\|sbin\|lib\|lib64\|libexec\|include"
+        if ls ./opt/* 2> /dev/null | grep -q "$rootdirs"
         then
-            # 1-level dir: opt/pkgname/{bin,sbin,...}
-            cp -va ./opt/*/* .
-            for pkgdir in $(basename ./opt/*)
-            do
-                ln -s $goboIndex/ Resources/Unmanaged/opt/$pkgdir
-            done
-            realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
-        elif ls ./opt/*/* 2> /dev/null | grep -q "bin\|sbin\|lib\|lib64\|libexec\|include"
+            flatten_rpm_1_level
+        elif ls ./opt/*/* 2> /dev/null | grep -q "$rootdirs"
         then
-            # 2-level dir: opt/vendorname/pkgname/{bin,sbin,...}
-            # XXX needs testing
-            cp -va ./opt/*/*/* .
-            for vendordir in $(basename ./opt/*)
-            do
-                mkdir -p Resources/Unmanaged/opt/$vendordir
-                for pkgdir in $(basename ./opt/*)
-                do
-                    ln -s $goboIndex/ Resources/Unmanaged/opt/$vendordir/$optdir
-                done
-            done
-            realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
+            flatten_rpm_2_levels
+        else
+            Log_Error "Could not determine this package's /opt structure, assuming 1-level"
+            flatten_rpm_1_level
         fi
         rm -rf -- ./opt
     fi
@@ -276,13 +288,18 @@ function populate_dependencies() {
     populate_dependencies_loop | sort -n | uniq
 }
 
+function deduce_program_name() {
+    local name=$(rpminfo --name "$rpmfile")
+    echo $name
+}
+
 ### Operation #################################################################
 
 Is_Writable "${goboPrograms}" || Verify_Superuser
 
 symlink="$(Entry symlink)"
 rpmfile="$(readlink -f $(Arg 1))"
-programname=$(rpminfo --name "$rpmfile")
+programname="$(deduce_program_name $rpmfile)"
 programversion=$(printf "%s_%s" $(rpminfo --version "$rpmfile") $(rpminfo --release "$rpmfile"))
 
 PrepareProgram -t "$programname" "$programversion"
