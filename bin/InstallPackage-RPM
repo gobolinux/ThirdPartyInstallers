@@ -47,26 +47,31 @@ function flatten_rpm() {
 
     Log_Normal "Flattening directory structure."
 
-    function flatten_opt_1_level() {
-        # Flatten 1-level dir: opt/pkgname/{bin,sbin,...}
-        cp -va ./opt/*/* .
+    function create_opt_links() {
+        local unmanagedopt="$1"
         for pkgdir in $(basename ./opt/*)
         do
-            ln -fs $goboIndex/ Resources/Unmanaged/opt/$pkgdir
+            mkdir -p "${unmanagedopt}/$pkgdir"
+            for optfile in $(ls | grep -v "^opt$")
+            do
+                ln -fs $target/$optfile "${unmanagedopt}/$pkgdir/$optfile"
+            done
         done
+    }
+
+    function flatten_opt_1_level() {
+        # Flatten 1-level dir: opt/pkgname/{bin,sbin,...}
+        cp ${verbose} -a ./opt/*/* .
+        create_opt_links Resources/Unmanaged/opt/
         realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
 
     function flatten_opt_2_levels() {
         # Flatten 2-levels dir: opt/vendorname/pkgname/{bin,sbin,...}
-        cp -va ./opt/*/*/* .
+        cp ${verbose} -a ./opt/*/*/* .
         for vendordir in $(basename ./opt/*)
         do
-            mkdir -p Resources/Unmanaged/opt/$vendordir
-            for pkgdir in $(basename ./opt/*)
-            do
-                ln -fs $goboIndex/ Resources/Unmanaged/opt/$vendordir/$optdir
-            done
+            create_opt_links Resources/Unmanaged/opt/$vendordir
         done
         realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
@@ -156,9 +161,13 @@ function lookup_symbol() {
 }
 
 function take_dependency_from_path() {
+    # TODO since $2 may come in the form '/usr/lib/libfoo >= version', we have to pick the
+    # path from the first part of the string. Right now we're using awk to get it, but that
+    # will not work if the dependency path contains spaces.
+
     local rpmfile="$1"
-    local originalpath="$2"
-    local path="$(echo $2 | sed 's,/usr,,g')"
+    local originalpath=$(echo "$2" | awk '{print $1}')
+    local path=$(echo "$originalpath" | sed 's,/usr,,g')
     local symbol="$3"
     local fullpath="$(readlink -f $path)"
     local arch=$(rpminfo --arch "$rpmfile")
@@ -315,6 +324,11 @@ function deduce_program_name() {
 ### Operation #################################################################
 
 Is_Writable "${goboPrograms}" || Verify_Superuser
+
+if Boolean "verbose"
+then verbose="--verbose"
+else verbose=
+fi
 
 rpmfiles=()
 eval `Args_To_Array rpmfiles_`
