@@ -47,7 +47,7 @@ function flatten_rpm() {
 
     Log_Normal "Flattening directory structure."
 
-    function flatten_rpm_1_level() {
+    function flatten_opt_1_level() {
         # Flatten 1-level dir: opt/pkgname/{bin,sbin,...}
         cp -va ./opt/*/* .
         for pkgdir in $(basename ./opt/*)
@@ -57,7 +57,7 @@ function flatten_rpm() {
         realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
 
-    function flatten_rpm_2_levels() {
+    function flatten_opt_2_levels() {
         # Flatten 2-levels dir: opt/vendorname/pkgname/{bin,sbin,...}
         cp -va ./opt/*/*/* .
         for vendordir in $(basename ./opt/*)
@@ -88,13 +88,13 @@ function flatten_rpm() {
         mkdir -p Resources/Unmanaged/opt
         if ls ./opt/* 2> /dev/null | grep -q "$rootdirs"
         then
-            flatten_rpm_1_level
+            flatten_opt_1_level
         elif ls ./opt/*/* 2> /dev/null | grep -q "$rootdirs"
         then
-            flatten_rpm_2_levels
+            flatten_opt_2_levels
         else
             Log_Error "Could not determine this package's /opt structure, assuming 1-level"
-            flatten_rpm_1_level
+            flatten_opt_1_level
         fi
         rm -rf -- ./opt
     fi
