@@ -23,6 +23,7 @@ Parse_Options "$@"
 ### Functions #################################################################
 
 function uncompress_rpm() {
+    local rpmfile="$1"
     local payload_compressor=$(rpminfo --compressor "$rpmfile")
     local cpiofile=$(basename "$rpmfile").cpio${payload_compressor:+.$payload_compressor}
     
@@ -42,6 +43,8 @@ function uncompress_rpm() {
 }
 
 function flatten_rpm() {
+    local rpmfile="$1"
+
     Log_Normal "Flattening directory structure."
 
     function flatten_rpm_1_level() {
@@ -111,6 +114,7 @@ function flatten_rpm() {
 }
 
 function populate_resources() {
+    local rpmfile="$1"
     local arch=$(rpminfo --arch "$rpmfile")
     local description=$(rpminfo --description "$rpmfile")
     
@@ -152,9 +156,10 @@ function lookup_symbol() {
 }
 
 function take_dependency_from_path() {
-    local originalpath="$1"
-    local path="$(echo $1 | sed 's,/usr,,g')"
-    local symbol="$2"
+    local rpmfile="$1"
+    local originalpath="$2"
+    local path="$(echo $2 | sed 's,/usr,,g')"
+    local symbol="$3"
     local fullpath="$(readlink -f $path)"
     local arch=$(rpminfo --arch "$rpmfile")
     local distro=$(rpminfo --distribution "$rpmfile")
@@ -260,11 +265,12 @@ function is_rpmlib_symbol() {
 }
 
 function populate_dependencies_loop() {
+    local rpmfile="$1"
     rpminfo --dependencies "$rpmfile" | while read dependency
     do
         if echo "$dependency" | grep -q "^/"
         then
-            depinfo=$(take_dependency_from_path $dependency "")
+            depinfo=$(take_dependency_from_path "$rpmfile" "$dependency" "")
             if [ "$depinfo" ]
             then echo "$depinfo"
             else echo "# Unresolved dependency: $dependency"
@@ -273,7 +279,7 @@ function populate_dependencies_loop() {
         then
             libname=$(echo "$dependency" | cut -d'(' -f1)
             wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
-            depinfo="$(take_dependency_from_path $goboLibraries/$libname $wantedsymbol)"
+            depinfo=$(take_dependency_from_path "$rpmfile" "$goboLibraries/$libname" "$wantedsymbol")
             if [ "$depinfo" ]
             then echo "$depinfo"
             else echo "# Unresolved dependency: $dependency"
@@ -295,11 +301,13 @@ function populate_dependencies_loop() {
 }
 
 function populate_dependencies() {
+    local rpmfile="$1"
     Log_Normal "Processing dependencies."
-    populate_dependencies_loop | sort -n | uniq
+    populate_dependencies_loop "$rpmfile" | sort -n | uniq
 }
 
 function deduce_program_name() {
+    local rpmfile="$1"
     local name=$(rpminfo --name "$rpmfile")
     echo $name
 }
@@ -335,10 +343,10 @@ Quiet pushd "$target" || Die "Could not enter $target"
 for rpmfile in "${rpmfiles[@]}"
 do
     Log_Normal "Processing $rpmfile"
-    uncompress_rpm
-    flatten_rpm
-    populate_resources
-    populate_dependencies
+    uncompress_rpm "$rpmfile"
+    flatten_rpm "$rpmfile"
+    populate_resources "$rpmfile"
+    populate_dependencies "$rpmfile"
 done
 Quiet popd
 
