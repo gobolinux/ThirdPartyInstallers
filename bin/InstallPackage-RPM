@@ -11,11 +11,13 @@ Import OptionParser
 scriptDescription="Install RPM packages on GoboLinux."
 scriptCredits="Copyright (C) Lucas C. Villa Real, 2016 - Released under the GNU GPL."
 helpOnNoArguments=yes
-scriptUsage="<file.rpm>"
-scriptExample="LibreOffice_5.2.3_Linux_x86-64_rpm"
+scriptUsage="<file.rpm> [file.rpm]"
+scriptExample="xispita-2.0.3-1.x86_64.rpm"
 
-Add_Option_Entry   "l" "symlink" "If symlinks should be created and wether they should be forced on conflicts."  "yes" "yes no force"
-Add_Option_Boolean "W" "no-web"  "Do not search the web to resolve dependencies."
+Add_Option_Entry   "n" "app-name"       "Override program name"
+Add_Option_Entry   "e" "version-number" "Override program version number"
+Add_Option_Entry   "l" "symlink"        "If symlinks should be created and wether they should be forced on conflicts."  "yes" "yes no force"
+Add_Option_Boolean "W" "no-web"         "Do not search the web to resolve dependencies."
 Parse_Options "$@"
 
 ### Functions #################################################################
@@ -47,7 +49,7 @@ function flatten_rpm() {
         cp -va ./opt/*/* .
         for pkgdir in $(basename ./opt/*)
         do
-            ln -s $goboIndex/ Resources/Unmanaged/opt/$pkgdir
+            ln -fs $goboIndex/ Resources/Unmanaged/opt/$pkgdir
         done
         realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
@@ -60,7 +62,7 @@ function flatten_rpm() {
             mkdir -p Resources/Unmanaged/opt/$vendordir
             for pkgdir in $(basename ./opt/*)
             do
-                ln -s $goboIndex/ Resources/Unmanaged/opt/$vendordir/$optdir
+                ln -fs $goboIndex/ Resources/Unmanaged/opt/$vendordir/$optdir
             done
         done
         realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
@@ -99,6 +101,11 @@ function flatten_rpm() {
         find ./var | sed "s,./var,$goboVariable,g" >> Resources/UnmanagedFiles
         mv ./var/* Resources/Unmanaged/$goboVariable
         rm -rf -- ./var
+    fi
+    if [ -e Resources/UnmanagedFiles ]
+    then
+        # If multiple RPM files are being merged, then ensure we have no dups
+        cat Resources/UnmanagedFiles | sort -n | uniq > x && mv x Resources/UnmanagedFiles
     fi
     rmdir * 2> /dev/null
 }
@@ -301,10 +308,21 @@ function deduce_program_name() {
 
 Is_Writable "${goboPrograms}" || Verify_Superuser
 
-symlink="$(Entry symlink)"
-rpmfile="$(readlink -f $(Arg 1))"
-programname="$(deduce_program_name $rpmfile)"
-programversion=$(printf "%s_%s" $(rpminfo --version "$rpmfile") $(rpminfo --release "$rpmfile"))
+rpmfiles=()
+eval `Args_To_Array rpmfiles_`
+for entry in "${rpmfiles_[@]}"
+do
+    rpmfiles+=( "$(readlink -f ${entry})" )
+done
+
+if Is_Entry "app-name"
+then programname=$(Entry "app-name")
+else programname="$(deduce_program_name ${rpmfiles[0]})"
+fi
+if Is_Entry "version-number"
+then programversion=$(Entry "version-number")
+else programversion=$(printf "%s_%s" $(rpminfo --version "${rpmfiles[0]}") $(rpminfo --release "${rpmfiles[0]}"))
+fi
 
 PrepareProgram -t "$programname" "$programversion"
 
@@ -314,14 +332,18 @@ target="$goboPrograms/$programname/$programversion"
 
 # Installation pipeline
 Quiet pushd "$target" || Die "Could not enter $target"
-uncompress_rpm
-flatten_rpm
-populate_resources
-populate_dependencies
+for rpmfile in "${rpmfiles[@]}"
+do
+    Log_Normal "Processing $rpmfile"
+    uncompress_rpm
+    flatten_rpm
+    populate_resources
+    populate_dependencies
+done
 Quiet popd
 
 # Symlinking
-if [ "$symlink" = "no" ]
+if [ $(Entry "symlink") = "no" ]
 then
     Log_Normal "Done."
     exit 0
