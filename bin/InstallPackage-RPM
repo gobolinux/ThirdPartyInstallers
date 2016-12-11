@@ -321,6 +321,29 @@ function deduce_program_name() {
     echo $name
 }
 
+function prepare_program_entry() {
+    local rpmfile="$1"
+
+    if [ ${#rpmfiles[@]} -gt 1 ] && Is_Entry "app-name" && [ ! -z "$programname" ]
+    then
+        # We have already prepared this program's entry on /Programs
+        return
+    fi
+    if Is_Entry "app-name"
+    then programname=$(Entry "app-name")
+    else programname="$(deduce_program_name $rpmfile)"
+    fi
+    if Is_Entry "version-number"
+    then programversion=$(Entry "version-number")
+    else programversion=$(printf "%s_%s" $(rpminfo --version "$rpmfile") $(rpminfo --release "$rpmfile"))
+    fi
+
+    # Prepare /Programs tree and update program name (PrepareProgram may have changed its case)
+    PrepareProgram -t "$programname" "$programversion"
+    programname=$(ls $goboPrograms/ | grep -i "^${programname}$")
+    target="$goboPrograms/$programname/$programversion"
+}
+
 ### Operation #################################################################
 
 Is_Writable "${goboPrograms}" || Verify_Superuser
@@ -337,32 +360,25 @@ do
     rpmfiles+=( "$(readlink -f ${entry})" )
 done
 
-if Is_Entry "app-name"
-then programname=$(Entry "app-name")
-else programname="$(deduce_program_name ${rpmfiles[0]})"
-fi
-if Is_Entry "version-number"
-then programversion=$(Entry "version-number")
-else programversion=$(printf "%s_%s" $(rpminfo --version "${rpmfiles[0]}") $(rpminfo --release "${rpmfiles[0]}"))
-fi
-
-PrepareProgram -t "$programname" "$programversion"
-
-# Update program name (PrepareProgram may have changed its case)
-programname=$(ls $goboPrograms/ | grep -i "^${programname}$")
-target="$goboPrograms/$programname/$programversion"
+# These will be set by prepare_program_entry()
+unset programname
+unset programversion
+unset target
 
 # Installation pipeline
-Quiet pushd "$target" || Die "Could not enter $target"
 for rpmfile in "${rpmfiles[@]}"
 do
     Log_Normal "Processing $rpmfile"
+    prepare_program_entry "$rpmfile"
+    Quiet pushd "$target" || Die "Could not enter $target"
+
     uncompress_rpm "$rpmfile"
     flatten_rpm "$rpmfile"
     populate_resources "$rpmfile"
     populate_dependencies "$rpmfile"
+
+    Quiet popd
 done
-Quiet popd
 
 # Symlinking
 if [ $(Entry "symlink") = "no" ]
