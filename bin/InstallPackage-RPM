@@ -22,6 +22,22 @@ Parse_Options "$@"
 
 ### Functions #################################################################
 
+function fetch_rpm() {
+    local rpmfile="$1"
+    local filename=$(basename "$rpmfile")
+    if Is_URL "$rpmfile"
+    then
+        if wget --help | grep -q "no-check-certificate"
+        then wget_cmd="wget --no-check-certificate"
+        else wget_cmd="wget"
+        fi
+        Quiet ${wget_cmd} -c "${rpmfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
+        echo "${goboTemp}/${filename}"
+    else
+        echo "$rpmfile"
+    fi
+}
+
 function uncompress_rpm() {
     local rpmfile="$1"
     local payload_compressor=$(rpminfo --compressor "$rpmfile")
@@ -357,7 +373,7 @@ rpmfiles=()
 eval `Args_To_Array rpmfiles_`
 for entry in "${rpmfiles_[@]}"
 do
-    rpmfiles+=( "$(readlink -f ${entry})" )
+    rpmfiles+=( "$(readlink -f ${entry} || echo ${entry})" )
 done
 
 # These will be set by prepare_program_entry()
@@ -366,9 +382,10 @@ unset programversion
 unset target
 
 # Installation pipeline
-for rpmfile in "${rpmfiles[@]}"
+for entry in "${rpmfiles[@]}"
 do
-    Log_Normal "Processing $rpmfile"
+    Log_Normal "Processing $(basename $entry)"
+    rpmfile=$(fetch_rpm "$entry")
     prepare_program_entry "$rpmfile"
     Quiet pushd "$target" || Die "Could not enter $target"
 
@@ -378,6 +395,7 @@ do
     populate_dependencies "$rpmfile"
 
     Quiet popd
+    Is_URL "$entry" && rm -f -- "$rpmfile"
 done
 
 # Symlinking
