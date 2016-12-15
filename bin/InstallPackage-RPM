@@ -119,6 +119,13 @@ function flatten_rpm() {
         fi
         rm -rf -- ./opt
     fi
+    if [ -d "./lib64" ]
+    then
+        Quiet rmdir lib
+        if [ ! -d "./lib" ]
+        then mv ./lib64 lib
+        fi
+    fi
     if [ -d "./var" ]
     then
         mkdir -p Resources/Unmanaged/$goboVariable
