@@ -64,13 +64,20 @@ function flatten_rpm() {
     Log_Normal "Flattening directory structure."
 
     function create_opt_links() {
-        local unmanagedopt="$1"
-        for pkgdir in $(basename ./opt/*)
+        local vendordir="$1"
+        local unmanagedopt="Resources/Unmanaged/opt"
+        for pkgdir in $(basename --multiple ./opt/$vendordir/*)
         do
-            mkdir -p "${unmanagedopt}/$pkgdir"
-            for optfile in $(ls | grep -v "^opt$")
+            mkdir ${verbose} -p "${unmanagedopt}/$vendordir/$pkgdir"
+            if [ -h "/opt/$vendordir/$pkgdir" ]
+            then
+                Log_Error "Too many programs are attempting to populate /opt/$vendordir/$pkgdir"
+                Log_Error "This feature is not supported by InstallPackage-RPM at this time."
+                continue
+            fi
+            for optfile in $(basename --multiple ./opt/$vendordir/$pkgdir/*)
             do
-                ln -fs $target/$optfile "${unmanagedopt}/$pkgdir/$optfile"
+                ln ${verbose} -fs $target/$optfile "${unmanagedopt}/$vendordir/$pkgdir/$optfile"
             done
         done
     }
@@ -78,46 +85,30 @@ function flatten_rpm() {
     function flatten_opt_1_level() {
         # Flatten 1-level dir: opt/pkgname/{bin,sbin,...}
         cp ${verbose} -a ./opt/*/* .
-        create_opt_links Resources/Unmanaged/opt/
+        create_opt_links ""
         realpath ./opt/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
 
     function flatten_opt_2_levels() {
         # Flatten 2-levels dir: opt/vendorname/pkgname/{bin,sbin,...}
         cp ${verbose} -a ./opt/*/*/* .
-        for vendordir in $(basename ./opt/*)
+        for vendordir in $(basename --multiple ./opt/*)
         do
-            create_opt_links Resources/Unmanaged/opt/$vendordir
+            create_opt_links "$vendordir"
         done
         realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
 
     if [ -d "./usr" ]
     then
-        cp -a ./usr/* .
+        cp ${verbose} -a ./usr/* .
         rm -rf -- ./usr
     fi
     if [ -d "./etc" ]
     then
         mkdir -p Resources/Defaults/Settings
-        mv ./etc/* Resources/Defaults/Settings
+        mv ${verbose} ./etc/* Resources/Defaults/Settings
         rm -rf -- ./etc
-    fi
-    if [ -d "./opt" ]
-    then
-        rootdirs="^bin$\|^sbin$\|^lib$\|^lib64$\|^libexec$\|^include$\|^share$"
-        mkdir -p Resources/Unmanaged/opt
-        if ls ./opt/* 2> /dev/null | grep -q "$rootdirs"
-        then
-            flatten_opt_1_level
-        elif ls ./opt/*/* 2> /dev/null | grep -q "$rootdirs"
-        then
-            flatten_opt_2_levels
-        else
-            Log_Error "Could not determine this package's /opt structure, assuming 1-level"
-            flatten_opt_1_level
-        fi
-        rm -rf -- ./opt
     fi
     if [ -d "./lib64" ]
     then
@@ -130,8 +121,30 @@ function flatten_rpm() {
     then
         mkdir -p Resources/Unmanaged/$goboVariable
         find ./var | sed "s,./var,$goboVariable,g" >> Resources/UnmanagedFiles
-        mv ./var/* Resources/Unmanaged/$goboVariable
+        mv ${verbose} ./var/* Resources/Unmanaged/$goboVariable
         rm -rf -- ./var
+    fi
+    if [ -d "./opt" ]
+    then
+        # Prevent the creation of backlinks to directories that would be pruned later on
+        find share -type d | xargs rmdir -p --ignore-fail-on-non-empty
+        rmdir * 2> /dev/null
+
+        rootdirs="^bin$\|^sbin$\|^lib$\|^lib64$\|^libexec$\|^include$\|^share$"
+        mkdir -p Resources/Unmanaged/opt
+        if ls ./opt/* 2> /dev/null | grep -q "$rootdirs"
+        then
+            Log_Verbose "Flattening 1-level /opt directory"
+            flatten_opt_1_level
+        elif ls ./opt/*/* 2> /dev/null | grep -q "$rootdirs"
+        then
+            Log_Verbose "Flattening 2-level /opt directory"
+            flatten_opt_2_levels
+        else
+            Log_Error "Could not determine this package's /opt structure, assuming 2-level"
+            flatten_opt_2_levels
+        fi
+        rm -rf -- ./opt
     fi
     if [ -e Resources/UnmanagedFiles ]
     then
