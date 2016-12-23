@@ -115,7 +115,9 @@ function flatten_rpm() {
         Quiet rmdir lib
         if [ ! -d "./lib" ]
         then mv ./lib64 lib
+        else cp -a ./lib64/* ./lib/
         fi
+        rm -rf ./lib64
     fi
     if [ -d "./var" ]
     then
