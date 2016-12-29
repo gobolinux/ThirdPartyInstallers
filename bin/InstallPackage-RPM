@@ -163,9 +163,9 @@ function populate_resources() {
     
     Log_Normal "Populating Resources."
     mkdir -p Resources
-    if [ "$arch" ] && [ "$arch" != "noarch" ]
-    then
-        echo "$arch" > Resources/Architecture
+    if [ "$arch" ]
+    then echo "$arch" > Resources/Architecture
+    else echo "$(uname -m)" > Resources/Architecture
     fi
     if [ "$description" ]
     then
