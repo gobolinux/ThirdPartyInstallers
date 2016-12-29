@@ -156,26 +156,84 @@ function flatten_rpm() {
     rmdir * 2> /dev/null
 }
 
+function populate_dependencies() {
+    local rpmfile="$1"
+    rpminfo --dependencies "$rpmfile" | while read dependency
+    do
+        if echo "$dependency" | grep -q "^/"
+        then
+            depinfo=$(take_dependency_from_path "$rpmfile" "$dependency" "")
+            if [ "$depinfo" ]
+            then echo "$depinfo"
+            else echo "# Unresolved dependency: $dependency"
+            fi
+        elif echo "$dependency" | grep -q "^lib.*.so*"
+        then
+            libname=$(echo "$dependency" | cut -d'(' -f1)
+            wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
+            depinfo=$(take_dependency_from_path "$rpmfile" "$goboLibraries/$libname" "$wantedsymbol")
+            if [ "$depinfo" ]
+            then echo "$depinfo"
+            else echo "# Unresolved dependency: $dependency"
+            fi
+        elif is_basic_symbol "$dependency"
+        then
+            Log_Verbose "Skipping basic symbol: $dependency"
+        elif is_rpmlib_symbol "$dependency"
+        then
+            Log_Verbose "Skipping internal symbol: $dependency"
+        else
+            depinfo=$(lookup_pkgname "$dependency")
+            if [ "$depinfo" ]
+            then echo "$depinfo"
+            else echo "# Unresolved dependency: $dependency"
+            fi
+        fi
+    done
+}
+
 function populate_resources() {
     local rpmfile="$1"
     local arch=$(rpminfo --arch "$rpmfile")
     local description=$(rpminfo --description "$rpmfile")
+    local release=$(rpminfo --release "$rpmfile")
+    local distro=$(rpminfo --distribution "$rpmfile")
     
     Log_Normal "Populating Resources."
     mkdir -p Resources
+
     if [ "$arch" ]
-    then echo "$arch" > Resources/Architecture
+    then echo "$arch"       > Resources/Architecture
     else echo "$(uname -m)" > Resources/Architecture
     fi
+    echo "$release"         > Resources/Revision
+
+    # Note that we never truncate neither Resources/PackageSource nor
+    # Resources/Description or Resources/Dependencies. This is to
+    # enable the installation of multiple RPM files under the same
+    # /Programs entry while keeing metadata of all the original files
+    # around.
+
+    [ -e Resources/PackageSource ] && echo >> Resources/PackageSource
+    echo "[File] $(basename $rpmfile)"     >> Resources/PackageSource
+    echo "[Distribution] $distro"          >> Resources/PackageSource
+
     if [ "$description" ]
     then
-        cat /dev/null > Resources/Description
+        [ -e Resources/Description ] && echo ""                >> Resources/Description
         echo "[Name] $(rpminfo --name $rpmfile)"               >> Resources/Description
         echo "[Summary] $(rpminfo --summary $rpmfile)"         >> Resources/Description
         echo "[License] $(rpminfo --license $rpmfile)"         >> Resources/Description
         echo "[Description] $(rpminfo --description $rpmfile)" >> Resources/Description
         echo "[Homepage] $(rpminfo --url $rpmfile)"            >> Resources/Description
     fi
+
+    Log_Normal "Processing dependencies."
+    alldeps=$(mktemp InstallPackage-RPM.XXXXXXXXXX)
+    populate_dependencies "$rpmfile"           >> Resources/Dependencies
+    cat Resources/Dependencies | sort -n | uniq > "$alldeps"
+    cat "$alldeps"                              > Resources/Dependencies
+    rm -f -- "$alldeps"
 }
 
 function lookup_symbol() {
@@ -311,48 +369,6 @@ function is_rpmlib_symbol() {
     return 1
 }
 
-function populate_dependencies_loop() {
-    local rpmfile="$1"
-    rpminfo --dependencies "$rpmfile" | while read dependency
-    do
-        if echo "$dependency" | grep -q "^/"
-        then
-            depinfo=$(take_dependency_from_path "$rpmfile" "$dependency" "")
-            if [ "$depinfo" ]
-            then echo "$depinfo"
-            else echo "# Unresolved dependency: $dependency"
-            fi
-        elif echo "$dependency" | grep -q "^lib.*.so*"
-        then
-            libname=$(echo "$dependency" | cut -d'(' -f1)
-            wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
-            depinfo=$(take_dependency_from_path "$rpmfile" "$goboLibraries/$libname" "$wantedsymbol")
-            if [ "$depinfo" ]
-            then echo "$depinfo"
-            else echo "# Unresolved dependency: $dependency"
-            fi
-        elif is_basic_symbol "$dependency"
-        then
-            Log_Verbose "Skipping basic symbol: $dependency"
-        elif is_rpmlib_symbol "$dependency"
-        then
-            Log_Verbose "Skipping internal symbol: $dependency"
-        else
-            depinfo=$(lookup_pkgname "$dependency")
-            if [ "$depinfo" ]
-            then echo "$depinfo"
-            else echo "# Unresolved dependency: $dependency"
-            fi
-        fi
-    done
-}
-
-function populate_dependencies() {
-    local rpmfile="$1"
-    Log_Normal "Processing dependencies."
-    populate_dependencies_loop "$rpmfile" | sort -n | uniq
-}
-
 function deduce_program_name() {
     local rpmfile="$1"
     local name=$(rpminfo --name "$rpmfile")
@@ -414,7 +430,6 @@ do
     uncompress_rpm "$rpmfile"
     flatten_rpm "$rpmfile"
     populate_resources "$rpmfile"
-    populate_dependencies "$rpmfile"
 
     Quiet popd
     Is_URL "$entry" && rm -f -- "$rpmfile"
