@@ -84,6 +84,16 @@ void print_distribution(Header *hdr)
 	generic_print_msg(hdr, "%{distribution}");
 }
 
+void print_filenames(Header *hdr)
+{
+	rpmfi fileinfo = rpmfiNew(NULL, *hdr, RPMTAG_BASENAMES, 0);
+	while (rpmfiNext(fileinfo) >= 0) {
+		const char *name = rpmfiFN(fileinfo);
+		printf("%s\n", name);
+	}
+	rpmfiFree(fileinfo);
+}
+
 void print_license(Header *hdr)
 {
 	generic_print_msg(hdr, "%{license}");
@@ -120,6 +130,7 @@ static struct optinfo optinfo[] = {
 	{ "--dependencies", "package dependencies", print_dependencies },
 	{ "--description",  "package description",  print_description },
 	{ "--distribution", "distribution name",    print_distribution },
+	{ "--filenames",    "list of files",        print_filenames },
 	{ "--license",      "package license",      print_license },
 	{ "--name",         "package name",         print_name },
 	{ "--release",      "release number",       print_release },
