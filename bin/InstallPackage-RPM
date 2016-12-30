@@ -156,6 +156,13 @@ function flatten_rpm() {
     rmdir * 2> /dev/null
 }
 
+function is_inputfile() {
+    local dependency="$1"
+    local pkgname=$(echo "$dependency" | cut -d'(' -f1 | awk {'print $1'})
+    printf "%s\n" "${rpmnames[@]}" | grep -q "^${pkgname}$" && return 0
+    return 1
+}
+
 function populate_dependencies() {
     local rpmfile="$1"
     rpminfo --dependencies "$rpmfile" | while read dependency
@@ -167,7 +174,7 @@ function populate_dependencies() {
             then echo "$depinfo"
             else echo "# Unresolved dependency: $dependency"
             fi
-        elif echo "$dependency" | grep -q "^lib.*.so*"
+        elif echo "$dependency" | grep -q "^lib.*\.so*"
         then
             libname=$(echo "$dependency" | cut -d'(' -f1)
             wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
@@ -182,6 +189,9 @@ function populate_dependencies() {
         elif is_rpmlib_symbol "$dependency"
         then
             Log_Verbose "Skipping internal symbol: $dependency"
+        elif is_inputfile "$dependency"
+        then
+            Log_Verbose "Skipping dependency passed as input file: $dependency"
         else
             depinfo=$(lookup_pkgname "$dependency")
             if [ "$depinfo" ]
@@ -407,11 +417,15 @@ then verbose="--verbose"
 else verbose=
 fi
 
+# The rpmfiles array holds the full path of all RPM input files
+# The rpmnames array holds the package name of all RPM input files
 rpmfiles=()
+rpmnames=()
 eval `Args_To_Array rpmfiles_`
 for entry in "${rpmfiles_[@]}"
 do
     rpmfiles+=( "$(readlink -f ${entry} || echo ${entry})" )
+    rpmnames+=( "$(rpminfo --name $entry)" )
 done
 
 # These will be set by prepare_program_entry()
