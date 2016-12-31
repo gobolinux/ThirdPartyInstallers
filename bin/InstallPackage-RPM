@@ -58,6 +58,28 @@ function uncompress_rpm() {
     rm -f -- "$cpiofile"
 }
 
+function determine_flattening_level() {
+    local rootdirs="bin$\|sbin$\|lib$\|lib64$\|libexec$\|include$\|share$"
+    local filenames=$(for i in "${rpmfiles[@]}"; do rpminfo --filenames $i; done)
+
+    Log_Verbose "$filenames"
+    if echo "$filenames" | grep -q "/opt/$rootdirs"
+    then
+        # 1-level /opt hierarchy
+        echo "1"
+    elif echo "$filenames" | grep -q "/opt/[^/]*/$rootdirs"
+    then
+        # 2-level /opt hierarchy
+        echo "2"
+    elif echo "$filenames" | grep -q "/opt"
+    then
+        # TODO Make an educated guess based on where the first non-directory file object
+        # is located.
+        Log_Error "Could not determine this package's /opt structure, assuming 2-level"
+        echo "2"
+    fi
+}
+
 function flatten_rpm() {
     local rpmfile="$1"
 
@@ -131,19 +153,14 @@ function flatten_rpm() {
         # Prevent the creation of backlinks to directories that would be pruned later on
         find share -type d | xargs rmdir -p --ignore-fail-on-non-empty
         rmdir * 2> /dev/null
-
-        rootdirs="^bin$\|^sbin$\|^lib$\|^lib64$\|^libexec$\|^include$\|^share$"
         mkdir -p Resources/Unmanaged/opt
-        if ls ./opt/* 2> /dev/null | grep -q "$rootdirs"
+        if [ "$flatteninglevel" = "1" ]
         then
             Log_Verbose "Flattening 1-level /opt directory"
             flatten_opt_1_level
-        elif ls ./opt/*/* 2> /dev/null | grep -q "$rootdirs"
+        elif [ "$flatteninglevel" = "2" ]
         then
             Log_Verbose "Flattening 2-level /opt directory"
-            flatten_opt_2_levels
-        else
-            Log_Error "Could not determine this package's /opt structure, assuming 2-level"
             flatten_opt_2_levels
         fi
         rm -rf -- ./opt
@@ -432,6 +449,13 @@ done
 unset programname
 unset programversion
 unset target
+
+# Determine the flattening level of /opt. In other words, whether
+# we have something like:
+# /opt/pkgname/{bin,sbin...}            (1-level), or
+# /opt/vendorname/pkgname/{bin,sbin...} (2-level)
+
+flatteninglevel=$(determine_flattening_level)
 
 # Installation pipeline
 for entry in "${rpmfiles[@]}"
