@@ -99,7 +99,10 @@ function flatten_rpm() {
             fi
             for optfile in $(basename --multiple ./opt/$vendordir/$pkgdir/*)
             do
-                ln ${verbose} -fs $target/$optfile "${unmanagedopt}/$vendordir/$pkgdir/$optfile"
+                if [ ! -e "${unmanagedopt}/$vendordir/$pkgdir/$optfile" ]
+                then
+                    ln ${verbose} -fs $target/$optfile "${unmanagedopt}/$vendordir/$pkgdir/$optfile"
+                fi
             done
         done
     }
