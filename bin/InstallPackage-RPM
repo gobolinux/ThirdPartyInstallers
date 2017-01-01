@@ -383,11 +383,14 @@ function lookup_pkgname() {
     local dependency="$1"
     local pkgname=$(echo "$dependency" | cut -d'(' -f1)
 
+    # GoboLinux doesn't have "devel" packages like most mainstream distros do
+    local goboname=$(echo "$pkgname" | sed 's,-devel$,,g')
+
     # Do we have a GoboLinux package installed with a matching name?
     for testname in $(ls $goboPrograms/)
     do
         # Case-insensitive comparison (requires Bash 4)
-        if [ "${testname,,}" = "${pkgname,,}" ]
+        if [ "${testname,,}" = "${pkgname,,}" ] || [ "${testname,,}" = "${goboname,,}" ]
         then
             echo "$testname" && return 0
         fi
@@ -396,7 +399,8 @@ function lookup_pkgname() {
     # Query the GoboLinux recipe store.
     if ! Boolean "no-web"
     then
-        local recipeurl=$(FindPackage -t recipe "${pkgname}")
+
+        local recipeurl=$(FindPackage -t recipe "${pkgname}" || FindPackage -t recipe "${goboname}")
         if [ "$recipeurl" ]
         then
             # TODO we're potentially discarding the wanted version(s) of the given dep
@@ -404,7 +408,7 @@ function lookup_pkgname() {
         fi
     fi
 
-    # TODO Query the remote RPM database
+    # TODO Query the remote RPM database for $pkgname
 
     return 1
 }
