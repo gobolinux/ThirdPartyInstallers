@@ -9,7 +9,7 @@ Import OptionParser
 ### Options ###################################################################
 
 scriptDescription="Install RPM packages on GoboLinux."
-scriptCredits="Copyright (C) Lucas C. Villa Real, 2016 - Released under the GNU GPL."
+scriptCredits="Copyright (C) Lucas C. Villa Real, 2016,2017 - Released under the GNU GPL."
 helpOnNoArguments=yes
 scriptUsage="<file.rpm> [file.rpm]"
 scriptExample="xispita-2.0.3-1.x86_64.rpm"
