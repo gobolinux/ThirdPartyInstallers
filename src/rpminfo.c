@@ -1,10 +1,7 @@
 /**
- * Print RPM package name, version, and revision.
- * Depends on RPM = 5.3.5
+ * Print RPM package name, version, revision, and other meta-data.
+ * Depends on RPM 5.x
  * 
- * Build with:
- * gcc rpminfo.c -o rpminfo -Wall -lrpm -lrpmdb -lrpmio -I/usr/include/rpm
- *
  * Written by Lucas C. Villa Real <lucasvr@gobolinux.org>
  * Released under the GNU GPL version 2 or above.
  */
