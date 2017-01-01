@@ -207,7 +207,7 @@ function populate_dependencies() {
             then echo "$depinfo"
             else echo "# Unresolved dependency: $dependency"
             fi
-        elif echo "$dependency" | grep -q "^lib.*\.so*"
+        elif echo "$dependency" | grep -q "^lib.*\.so*\|*\.so\.*"
         then
             libname=$(echo "$dependency" | cut -d'(' -f1)
             wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
@@ -384,10 +384,10 @@ function lookup_pkgname() {
     local pkgname=$(echo "$dependency" | cut -d'(' -f1)
 
     # Do we have a GoboLinux package installed with a matching name?
-    for testname in $(ls $goboPrograms/*)
+    for testname in $(ls $goboPrograms/)
     do
-        # Case-insensitive omparison (requires Bash 4)
-        if [ "${testname,,}" = "{$pkgname,,}" ]
+        # Case-insensitive comparison (requires Bash 4)
+        if [ "${testname,,}" = "${pkgname,,}" ]
         then
             echo "$pkgname" && return 0
         fi
