@@ -207,7 +207,7 @@ function populate_dependencies() {
             then echo "$depinfo"
             else echo "# Unresolved path-based dependency: $dependency"
             fi
-        elif echo "$dependency" | grep -q "^lib.*\.so*\|*\.so\.*"
+        elif echo "$dependency" | grep -q "^lib.*\.so*\|.*\.so\.*"
         then
             libname=$(echo "$dependency" | cut -d'(' -f1)
             wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
