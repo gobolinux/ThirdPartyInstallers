@@ -393,7 +393,19 @@ function lookup_pkgname() {
         fi
     done
 
-    # Query the remote RPM database
+    # Query the GoboLinux recipe store.
+    if ! Boolean "no-web"
+    then
+        local recipeurl=$(FindPackage -t recipe "${pkgname}")
+        if [ "$recipeurl" ]
+        then
+            # TODO we're potentially discarding the wanted version(s) of the given dep
+            echo "$(basename $recipeurl | sed 's,\(.*\)--.*--.*,\1,g')" && return 0
+        fi
+    fi
+
+    # TODO Query the remote RPM database
+
     return 1
 }
 
