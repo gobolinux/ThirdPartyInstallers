@@ -219,9 +219,6 @@ function populate_dependencies() {
         elif is_basic_symbol "$dependency"
         then
             Log_Verbose "Skipping basic symbol: $dependency"
-        elif is_rpmlib_symbol "$dependency"
-        then
-            Log_Verbose "Skipping internal symbol: $dependency"
         elif is_inputfile "$dependency"
         then
             Log_Verbose "Skipping dependency passed as input file: $dependency"
@@ -416,15 +413,6 @@ function lookup_pkgname() {
 function is_basic_symbol() {
     local dependency="$1"
     echo "$dependency" | grep -q "^rtld("  && return 0
-    return 1
-}
-
-function is_rpmlib_symbol() {
-    local dependency="$1"
-    echo "$dependency" | grep -q "^VersionedDependencies"  && return 0
-    echo "$dependency" | grep -q "^PayloadFilesHavePrefix" && return 0
-    echo "$dependency" | grep -q "^CompressedFileNames"    && return 0
-    echo "$dependency" | grep -q "^PayloadIs"              && return 0
     return 1
 }
 

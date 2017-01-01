@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <errno.h>
 
+#define _RPMEVR_INTERNAL
 #include <rpm/rpmio.h>
 #include <rpm/rpmcli.h>
 #include <rpm/pkgio.h>
@@ -52,7 +53,10 @@ void print_dependencies(Header *hdr)
 		const char *name = rpmdsN(depinfo);
 		const char *version= rpmdsEVR(depinfo);
 		evrFlags flags = rpmdsFlags(depinfo);
-
+		if (flags & RPMSENSE_RPMLIB) {
+			/* ignore dependencies on rpmlib features */
+			continue;
+		}
 		printf("%s", name);
 		if (version && strlen(version)) {
 			if (flags)
