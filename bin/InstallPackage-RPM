@@ -73,10 +73,23 @@ function determine_flattening_level() {
         echo "2"
     elif echo "$filenames" | grep -q "/opt"
     then
-        # TODO Make an educated guess based on where the first non-directory file object
-        # is located.
-        Log_Error "Could not determine this package's /opt structure, assuming 2-level"
-        echo "2"
+        # Get the longest common prefix among the $filenames list that starts
+        # with "/opt" and then determine how many path levels we have there.
+        local commonprefix=$(echo "$filenames" | grep "/opt" | sed -e 'N;s/^\(.*\).*\n\1.*$/\1\n\1/;D')
+        local numslashes=$(echo "$commonprefix" | grep -o "/" | wc -l)
+        let numslashes=numslashes-1
+        if [ "$numslashes" = 1 ]
+        then
+            Log_Verbose "Package seems to have a 1-level /opt structure"
+            echo "1"
+        elif [ "$numslashes" = 2 ]
+        then
+            Log_Verbose "Package seems to have a 2-level /opt structure"
+            echo "2"
+        else
+            Log_Error "Could not determine this package's /opt structure, assuming 2-level"
+            echo "2"
+        fi
     fi
 }
 
