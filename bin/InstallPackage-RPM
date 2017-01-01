@@ -389,7 +389,7 @@ function lookup_pkgname() {
         # Case-insensitive comparison (requires Bash 4)
         if [ "${testname,,}" = "${pkgname,,}" ]
         then
-            echo "$pkgname" && return 0
+            echo "$testname" && return 0
         fi
     done
 
