@@ -11,6 +11,10 @@ Note that running packages built for other distributions is a best-effort task. 
 work out of the box and that are outside the scope of `ThirdPartyInstallers`. For instance, init scripts, tasks files,
 and reliance on other distro-specific components may preclude the installed package from working as expected.
 
+ThirdPartyInstallers should help you to install distro-agnostic packages such as LibreOffice, self-contained packages and packages that do have many fancy dependencies. It will **not** work with complex packages such as KDE.
+
+If there is a GoboLinux recipe to build a program for which you have an RPM/DEB file, please use the Compile tool instead of the ThirdPartyInstallers utilities. We provide **zero** support for third-party packages.
+
 # Usage
 
 Installing a single RPM file:
