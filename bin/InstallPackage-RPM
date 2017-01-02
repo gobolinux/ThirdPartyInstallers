@@ -8,7 +8,7 @@ Import OptionParser
 
 ### Options ###################################################################
 
-scriptDescription="Install RPM packages on GoboLinux."
+scriptDescription="Install RPM and DEB packages on GoboLinux."
 scriptCredits="Copyright (C) Lucas C. Villa Real, 2016,2017 - Released under the GNU GPL."
 helpOnNoArguments=yes
 scriptUsage="<file.rpm> [file.rpm]"
@@ -22,45 +22,30 @@ Parse_Options "$@"
 
 ### Functions #################################################################
 
-function fetch_rpm() {
-    local rpmfile="$1"
-    local filename=$(basename "$rpmfile")
-    if Is_URL "$rpmfile"
+function fetch_package() {
+    local inputfile="$1"
+    local filename=$(basename "$inputfile")
+    if Is_URL "$inputfile"
     then
         if wget --help | grep -q "no-check-certificate"
         then wget_cmd="wget --no-check-certificate"
         else wget_cmd="wget"
         fi
-        Quiet ${wget_cmd} -c "${rpmfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
+        Quiet ${wget_cmd} -c "${inputfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
         echo "${goboTemp}/${filename}"
     else
-        echo "$rpmfile"
+        echo "$inputfile"
     fi
 }
 
-function uncompress_rpm() {
-    local rpmfile="$1"
-    local payload_compressor=$(rpminfo --compressor "$rpmfile")
-    local cpiofile=$(basename "$rpmfile").cpio${payload_compressor:+.$payload_compressor}
-    
-    Log_Normal "Extracting RPM payload."
-    rpm2cpio < "$rpmfile" > "$cpiofile"
-
-    if [ "$payload_compressor" = "xz" ]
-    then
-        Log_Normal "Decompressing $payload_compressor payload."
-        xz -d "$cpiofile"
-        cpiofile=$(basename "$rpmfile").cpio
-    fi
-
-    Log_Normal "Extracting CPIO archive."
-    cpio -d -i < "$cpiofile"
-    rm -f -- "$cpiofile"
+function uncompress_package() {
+    local inputfile="$1"
+    thirdparty_uncompress "$inputfile"
 }
 
 function determine_flattening_level() {
     local rootdirs="bin$\|sbin$\|lib$\|lib64$\|libexec$\|include$\|share$"
-    local filenames=$(for i in "${rpmfiles[@]}"; do rpminfo --filenames $i; done)
+    local filenames=$(for i in "${inputfiles[@]}"; do thirdparty_filenames $i; done)
 
     Log_Verbose "$filenames"
     if echo "$filenames" | grep -q "/opt/$rootdirs"
@@ -93,8 +78,8 @@ function determine_flattening_level() {
     fi
 }
 
-function flatten_rpm() {
-    local rpmfile="$1"
+function flatten_package() {
+    local inputfile="$1"
 
     Log_Normal "Flattening directory structure."
 
@@ -192,17 +177,17 @@ function flatten_rpm() {
 function is_inputfile() {
     local dependency="$1"
     local pkgname=$(echo "$dependency" | cut -d'(' -f1 | awk {'print $1'})
-    printf "%s\n" "${rpmnames[@]}" | grep -q "^${pkgname}$" && return 0
+    printf "%s\n" "${inputnames[@]}" | grep -q "^${pkgname}$" && return 0
     return 1
 }
 
 function populate_dependencies() {
-    local rpmfile="$1"
-    rpminfo --dependencies "$rpmfile" | while read dependency
+    local inputfile="$1"
+    thirdparty_dependencies "$inputfile" | while read dependency
     do
         if echo "$dependency" | grep -q "^/"
         then
-            depinfo=$(take_dependency_from_path "$rpmfile" "$dependency" "")
+            depinfo=$(take_dependency_from_path "$inputfile" "$dependency" "")
             if [ "$depinfo" ]
             then echo "$depinfo"
             else echo "# Unresolved path-based dependency: $dependency"
@@ -211,7 +196,7 @@ function populate_dependencies() {
         then
             libname=$(echo "$dependency" | cut -d'(' -f1)
             wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
-            depinfo=$(take_dependency_from_path "$rpmfile" "$goboLibraries/$libname" "$wantedsymbol")
+            depinfo=$(take_dependency_from_path "$inputfile" "$goboLibraries/$libname" "$wantedsymbol")
             if [ "$depinfo" ]
             then echo "$depinfo"
             else echo "# Unresolved path-based library dependency: $dependency"
@@ -233,11 +218,11 @@ function populate_dependencies() {
 }
 
 function populate_resources() {
-    local rpmfile="$1"
-    local arch=$(rpminfo --arch "$rpmfile")
-    local description=$(rpminfo --description "$rpmfile")
-    local release=$(rpminfo --release "$rpmfile")
-    local distro=$(rpminfo --distribution "$rpmfile")
+    local inputfile="$1"
+    local arch=$(thirdparty_arch "$inputfile")
+    local description=$(thirdparty_description "$inputfile")
+    local release=$(thirdparty_release "$inputfile")
+    local distro=$(thirdparty_distribution "$inputfile")
     
     Log_Normal "Populating Resources."
     mkdir -p Resources
@@ -250,27 +235,27 @@ function populate_resources() {
 
     # Note that we never truncate neither Resources/PackageSource nor
     # Resources/Description or Resources/Dependencies. This is to
-    # enable the installation of multiple RPM files under the same
+    # enable the installation of multiple RPM/DEB files under the same
     # /Programs entry while keeing metadata of all the original files
     # around.
 
     [ -e Resources/PackageSource ] && echo >> Resources/PackageSource
-    echo "[File] $(basename $rpmfile)"     >> Resources/PackageSource
+    echo "[File] $(basename $inputfile)"   >> Resources/PackageSource
     echo "[Distribution] $distro"          >> Resources/PackageSource
 
     if [ "$description" ]
     then
-        [ -e Resources/Description ] && echo ""                >> Resources/Description
-        echo "[Name] $(rpminfo --name $rpmfile)"               >> Resources/Description
-        echo "[Summary] $(rpminfo --summary $rpmfile)"         >> Resources/Description
-        echo "[License] $(rpminfo --license $rpmfile)"         >> Resources/Description
-        echo "[Description] $(rpminfo --description $rpmfile)" >> Resources/Description
-        echo "[Homepage] $(rpminfo --url $rpmfile)"            >> Resources/Description
+        [ -e Resources/Description ] && echo ""                   >> Resources/Description
+        echo "[Name] $(thirdparty_name $inputfile)"               >> Resources/Description
+        echo "[Summary] $(thirdparty_summary $inputfile)"         >> Resources/Description
+        echo "[License] $(thirdparty_license $inputfile)"         >> Resources/Description
+        echo "[Description] $(thirdparty_description $inputfile)" >> Resources/Description
+        echo "[Homepage] $(thirdparty_url $inputfile)"            >> Resources/Description
     fi
 
     Log_Normal "Processing dependencies."
-    alldeps=$(mktemp InstallPackage-RPM.XXXXXXXXXX)
-    populate_dependencies "$rpmfile"           >> Resources/Dependencies
+    alldeps=$(mktemp ThirdPartyInstaller.XXXXXXXXXX)
+    populate_dependencies "$inputfile"         >> Resources/Dependencies
     cat Resources/Dependencies | sort -n | uniq > "$alldeps"
     cat "$alldeps"                              > Resources/Dependencies
     rm -f -- "$alldeps"
@@ -301,13 +286,13 @@ function take_dependency_from_path() {
     # path from the first part of the string. Right now we're using awk to get it, but that
     # will not work if the dependency path contains spaces.
 
-    local rpmfile="$1"
+    local inputfile="$1"
     local originalpath=$(echo "$2" | awk '{print $1}')
     local path=$(echo "$originalpath" | sed 's,/usr,,g')
     local symbol="$3"
     local fullpath="$(readlink -f $path)"
-    local arch=$(rpminfo --arch "$rpmfile")
-    local distro=$(rpminfo --distribution "$rpmfile")
+    local arch=$(thirdparty_arch "$inputfile")
+    local distro=$(thirdparty_distribution "$inputfile")
 
     local depname=
     local depversion=
@@ -358,13 +343,13 @@ function take_dependency_from_path() {
         fi
 
         # We don't have a matching filename under /System/Index nor under /Programs/*/*.
-        # What we do now is to query remote RPM databases to find which package hosts the
+        # What we do now is to query remote RPM/DEB databases to find which package hosts the
         # dependency file.
 
         if ! Boolean "no-web"
         then
-            Log_Normal "Searching the remote RPM database for the package hosting $originalpath"
-            depname=$(RPMFinder --path="$originalpath" --arch="$arch" --distro="$distro")
+            Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
+            depname=$(third_party_search_remotedb "$originalpath" "$arch" "$distro")
             if [ "$depname" ]
             then
                 # TODO: we could now lookup the GoboLinux recipe store to find whether we
@@ -407,6 +392,8 @@ function lookup_pkgname() {
 
     # TODO Query the remote RPM database for $pkgname
 
+    # TODO Query the remote DEB database for $pkgname
+
     return 1
 }
 
@@ -417,26 +404,26 @@ function is_basic_symbol() {
 }
 
 function deduce_program_name() {
-    local rpmfile="$1"
-    local name=$(rpminfo --name "$rpmfile")
+    local inputfile="$1"
+    local name=$(thirdparty_name "$inputfile")
     echo $name
 }
 
 function prepare_program_entry() {
-    local rpmfile="$1"
+    local inputfile="$1"
 
-    if [ ${#rpmfiles[@]} -gt 1 ] && Is_Entry "app-name" && [ ! -z "$programname" ]
+    if [ ${#inputfiles[@]} -gt 1 ] && Is_Entry "app-name" && [ ! -z "$programname" ]
     then
         # We have already prepared this program's entry on /Programs
         return
     fi
     if Is_Entry "app-name"
     then programname=$(Entry "app-name")
-    else programname="$(deduce_program_name $rpmfile)"
+    else programname="$(deduce_program_name $inputfile)"
     fi
     if Is_Entry "version-number"
     then programversion=$(Entry "version-number")
-    else programversion=$(printf "%s_%s" $(rpminfo --version "$rpmfile") $(rpminfo --release "$rpmfile"))
+    else programversion=$(printf "%s_%s" $(thirdparty_version "$inputfile") $(thirdparty_release "$inputfile"))
     fi
 
     # Prepare /Programs tree and update program name (PrepareProgram may have changed its case)
@@ -454,16 +441,32 @@ then verbose="--verbose"
 else verbose=
 fi
 
-# The rpmfiles array holds the full path of all RPM input files
-# The rpmnames array holds the package name of all RPM input files
-rpmfiles=()
-rpmnames=()
-eval `Args_To_Array rpmfiles_`
-for entry in "${rpmfiles_[@]}"
+# The inputfiles array holds the full path of all RPM/DEB input files
+# The inputnames array holds the package name of all RPM/DEB input files
+inputfiles=()
+inputnames=()
+rpmcount=0
+debcount=0
+eval `Args_To_Array inputfiles_`
+for entry in "${inputfiles_[@]}"
 do
-    rpmfiles+=( "$(readlink -f ${entry} || echo ${entry})" )
-    rpmnames+=( "$(rpminfo --name $entry)" )
+    inputfiles+=( "$(readlink -f ${entry} || echo ${entry})" )
+    inputnames+=( "$(rpminfo --name $entry)" )
+    echo "$entry" | grep -qi "\.deb" && let debcount=debcount+1
+    echo "$entry" | grep -qi "\.rpm" && let rpmcount=rpmcount+1
 done
+
+# Sanity checks, then import the backend to handle the package format
+if [ $rpmcount -gt 0 ] && [ $debcount -gt 0 ]
+then
+    Die "Error: cannot handle both RPM and DEB files in a single shot."
+elif [ $rpmcount -gt 0 ]
+then
+    Import RPM
+elif [ $debcount -gt 0 ]
+then
+    Import DEB
+fi
 
 # These will be set by prepare_program_entry()
 unset programname
@@ -478,19 +481,19 @@ unset target
 flatteninglevel=$(determine_flattening_level)
 
 # Installation pipeline
-for entry in "${rpmfiles[@]}"
+for entry in "${inputfiles[@]}"
 do
     Log_Normal "Processing $(basename $entry)"
-    rpmfile=$(fetch_rpm "$entry")
-    prepare_program_entry "$rpmfile"
+    inputfile=$(fetch_package "$entry")
+    prepare_program_entry "$inputfile"
     Quiet pushd "$target" || Die "Could not enter $target"
 
-    uncompress_rpm "$rpmfile"
-    flatten_rpm "$rpmfile"
-    populate_resources "$rpmfile"
+    uncompress_package "$inputfile"
+    flatten_package "$inputfile"
+    populate_resources "$inputfile"
 
     Quiet popd
-    Is_URL "$entry" && rm -f -- "$rpmfile"
+    Is_URL "$entry" && rm -f -- "$inputfile"
 done
 
 # Symlinking

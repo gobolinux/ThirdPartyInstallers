@@ -1,0 +1,89 @@
+#!/bin/bash (source)
+
+# ThirdPartyInstallers RPM backend
+
+function thirdparty_backend() {
+    echo "RPM"
+}
+
+function thirdparty_arch() {
+    local rpmfile="$1"
+    rpminfo --arch "$rpmfile"
+}
+
+function thirdparty_distribution() {
+    local rpmfile="$1"
+    rpminfo --distribution "$rpmfile"
+}
+
+function thirdparty_dependencies() {
+    local rpmfile="$1"
+    rpminfo --dependencies "$rpmfile"
+}
+
+function thirdparty_description() {
+    local rpmfile="$1"
+    rpminfo --description "$rpmfile"
+}
+
+function thirdparty_filenames() {
+    local rpmfile="$1"
+    rpminfo --filenames "$rpmfile"
+}
+
+function thirdparty_license() {
+    local rpmfile="$1"
+    rpminfo --license "$rpmfile"
+}
+
+function thirdparty_name() {
+    local rpmfile="$1"
+    rpminfo --name "$rpmfile"
+}
+
+function thirdparty_version() {
+    local rpmfile="$1"
+    rpminfo --version "$rpmfile"
+}
+
+function thirdparty_release() {
+    local rpmfile="$1"
+    rpminfo --release "$rpmfile"
+}
+
+function thirdparty_summary() {
+    local rpmfile="$1"
+    rpminfo --summary "$rpmfile"
+}
+
+function thirdparty_url() {
+    local rpmfile="$1"
+    rpminfo --url "$rpmfile"
+}
+
+function thirdparty_search_remotedb() {
+    local path="$1"
+    local arch="$2"
+    local distro="$3"
+    RPMFinder --path="$path" --arch="$arch" --distro="$distro"
+}
+
+function thirdparty_uncompress() {
+    local rpmfile="$1"
+    local payload_compressor=$(rpminfo --compressor "$rpmfile")
+    local cpiofile=$(basename "$rpmfile").cpio${payload_compressor:+.$payload_compressor}
+    
+    Log_Normal "Extracting RPM payload."
+    rpm2cpio < "$rpmfile" > "$cpiofile"
+
+    if [ "$payload_compressor" = "xz" ]
+    then
+        Log_Normal "Decompressing $payload_compressor payload."
+        xz -d "$cpiofile"
+        cpiofile=$(basename "$rpmfile").cpio
+    fi
+
+    Log_Normal "Extracting CPIO archive."
+    cpio -d -i < "$cpiofile"
+    rm -f -- "$cpiofile"
+}

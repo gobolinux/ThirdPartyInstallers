@@ -1,0 +1,59 @@
+#!/bin/bash (source)
+
+# ThirdPartyInstallers DEB backend
+
+function thirdparty_backend() {
+    echo "DEB"
+}
+
+function thirdparty_arch() {
+    false
+}
+
+function thirdparty_distribution() {
+    false
+}
+
+function thirdparty_dependencies() {
+    false
+}
+
+function thirdparty_description() {
+    false
+}
+
+function thirdparty_filenames() {
+    false
+}
+
+function thirdparty_license() {
+    false
+}
+
+function thirdparty_name() {
+    false
+}
+
+function thirdparty_version() {
+    false
+}
+
+function thirdparty_release() {
+    false
+}
+
+function thirdparty_summary() {
+    false
+}
+
+function thirdparty_url() {
+    false
+}
+
+function thirdparty_search_remotedb() {
+    false
+}
+
+function thirdparty_uncompress() {
+    false
+}
