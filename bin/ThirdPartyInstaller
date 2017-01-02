@@ -92,7 +92,7 @@ function flatten_package() {
             if [ -h "/opt/$vendordir/$pkgdir" ]
             then
                 Log_Error "Too many programs are attempting to populate /opt/$vendordir/$pkgdir"
-                Log_Error "This feature is not supported by InstallPackage-RPM at this time."
+                Log_Error "This feature is not supported by ThirdPartyInstaller at this time."
                 continue
             fi
             for optfile in $(basename --multiple ./opt/$vendordir/$pkgdir/*)
@@ -168,7 +168,7 @@ function flatten_package() {
     fi
     if [ -e Resources/UnmanagedFiles ]
     then
-        # If multiple RPM files are being merged, then ensure we have no dups
+        # If multiple RPM/DEB files are being merged, then ensure we have no dups
         cat Resources/UnmanagedFiles | sort -n | uniq > x && mv x Resources/UnmanagedFiles
     fi
     rmdir * 2> /dev/null
