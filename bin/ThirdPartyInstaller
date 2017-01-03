@@ -305,7 +305,7 @@ function take_dependency_from_path() {
         # the dependency currently linked on /System/Index.
         #
         # Note that when iterating over installed programs we skip those entries whose
-        # Resources/Architecture do not match the output of $(rpminfo --arch).
+        # Resources/Architecture do not match the output of $(thirdparty_arch).
 
         depname=$(echo "$fullpath" | cut -d/ -f3)
         depversion=$(echo "$fullpath" | cut -d/ -f4)
@@ -441,32 +441,24 @@ then verbose="--verbose"
 else verbose=
 fi
 
+# Sanity checks, then import the backend to handle the input package(s)
+if echo "$@" | grep -q "\.rpm" && echo "$@" | grep -q "\.deb"
+then Die "Error: cannot handle both RPM and DEB files in one shot."
+elif echo "$@" | grep -q "\.rpm"
+then Import RPM
+else Import DEB
+fi
+
 # The inputfiles array holds the full path of all RPM/DEB input files
 # The inputnames array holds the package name of all RPM/DEB input files
 inputfiles=()
 inputnames=()
-rpmcount=0
-debcount=0
 eval `Args_To_Array inputfiles_`
 for entry in "${inputfiles_[@]}"
 do
     inputfiles+=( "$(readlink -f ${entry} || echo ${entry})" )
-    inputnames+=( "$(rpminfo --name $entry)" )
-    echo "$entry" | grep -qi "\.deb" && let debcount=debcount+1
-    echo "$entry" | grep -qi "\.rpm" && let rpmcount=rpmcount+1
+    inputnames+=( "$(thirdparty_name $entry)" )
 done
-
-# Sanity checks, then import the backend to handle the package format
-if [ $rpmcount -gt 0 ] && [ $debcount -gt 0 ]
-then
-    Die "Error: cannot handle both RPM and DEB files in a single shot."
-elif [ $rpmcount -gt 0 ]
-then
-    Import RPM
-elif [ $debcount -gt 0 ]
-then
-    Import DEB
-fi
 
 # These will be set by prepare_program_entry()
 unset programname

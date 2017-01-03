@@ -7,53 +7,101 @@ function thirdparty_backend() {
 }
 
 function thirdparty_arch() {
-    false
+    local debfile="$1"
+    local arch=$(dpkg-deb --field "$debfile" "Architecture")
+    if [ "$arch" = "amd64" ]
+    then echo "x86_64"
+    elif [ "$arch" = "all" ]
+    then echo "noarch"
+    else echo "$arch"
+    fi
 }
 
 function thirdparty_distribution() {
-    false
+    local debfile="$1"
+    local distro=$(dpkg-deb --field "$debfile" "Distribution")
+    if [ -z "$distro" ]
+    then echo "Debian based (guessed)"
+    else echo "$distro"
+    fi
 }
 
 function thirdparty_dependencies() {
-    false
+    local debfile="$1"
+    dpkg-deb --field "$debfile" "Depends"
 }
 
 function thirdparty_description() {
-    false
+    local debfile="$1"
+    dpkg-deb --field "$debfile" "Description"
 }
 
 function thirdparty_filenames() {
-    false
+    local debfile="$1"
+    local contents=$(dpkg-deb --contents "$debfile")
+
+    # The output of --contents looks like this:
+    #
+    # drwxr-xr-x root/root         0 2016-12-20 12:55 ./
+    # drwxr-xr-x root/root         0 2016-12-20 12:55 ./etc/
+    # ...
+    # lrwxrwxrwx root/root         0 2016-12-20 12:55 ./opt/application/lib/libavfilter.so -> libavfilter.so.3.90.100
+    #
+    # We only want the path component. The sed below uses ./ as delimiter to account for
+    # spaces in file names. Symbolic link targets are filtered out.
+
+    echo "$contents" | sed 's,.*\./\(.*\),/\1,g' | grep -v "^/$" | sed -e 's,/$,,g' -e 's, -> .*,,g'
 }
 
 function thirdparty_license() {
-    false
+    local debfile="$1"
+    echo "Please visit the project website for licensing information."
 }
 
 function thirdparty_name() {
-    false
+    local debfile="$1"
+    dpkg-deb --field "$debfile" "Package"
 }
 
 function thirdparty_version() {
-    false
+    local debfile="$1"
+    local version=$(dpkg-deb --field "$debfile" "Version")
+    # The format is: [epoch:]upstream_version[-debian_revision]
+    # We want to output the [epoch:]upstream_version part
+    echo "$version" | cut -d: -f1-2 | rev | cut -d- -f2- | rev
 }
 
 function thirdparty_release() {
-    false
+    local debfile="$1"
+    local version=$(dpkg-deb --field "$debfile" "Version")
+    # The format is: [epoch:]upstream_version[-debian_revision]
+    # We want to output the [-debian_revision] part
+    # The absence of a debian_revision is equivalent to a debian_revision of 0.
+    if echo "$version" | grep -q -- "-"
+    then echo "$version" | rev | cut -d- -f1 | rev
+    else echo "0"
+    fi
 }
 
 function thirdparty_summary() {
-    false
+    local debfile="$1"
+    dpkg-deb --field "$debfile" "Description"
 }
 
 function thirdparty_url() {
-    false
+    local debfile="$1"
+    dpkg-deb --field "$debfile" "Homepage"
 }
 
 function thirdparty_search_remotedb() {
+    local path="$1"
+    local arch="$2"
+    local distro="$3"
     false
 }
 
 function thirdparty_uncompress() {
-    false
+    local debfile="$1"
+    Log_Normal "Extracting DEB payload."
+    dpkg-deb --extract "$debfile" .
 }
