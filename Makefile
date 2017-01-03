@@ -9,8 +9,10 @@ debug:
 install:
 	install -d $(PREFIX)/bin
 	install -d $(PREFIX)/Resources
-	install --mode=644 Resources/Dependencies $(PREFIX)/Resources
+	install -d $(PREFIX)/Functions
 	install --mode=755 $(wildcard bin/*) $(PREFIX)/bin
+	install --mode=644 $(wildcard Resources/*) $(PREFIX)/Resources
+	install --mode=644 $(wildcard Functions/*) $(PREFIX)/Functions
 
 clean:
 	rm -rf Resources/FileHash*
