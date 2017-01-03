@@ -28,7 +28,13 @@ function thirdparty_distribution() {
 
 function thirdparty_dependencies() {
     local debfile="$1"
-    dpkg-deb --field "$debfile" "Depends"
+    local deps=$(dpkg-deb --field "$debfile" "Depends")
+
+    # The Depends fields contains a comma-separated list of dependencies. The range with the required
+    # versions, when available, is output between parenthesis. To make the Dependencies output match the
+    # format used by GoboLinux, we use a newline separator and remove all parenthesis characters found.
+
+    echo "$deps" | sed 's/, /\n/g' | tr -d "()"
 }
 
 function thirdparty_description() {
