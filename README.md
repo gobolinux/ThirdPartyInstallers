@@ -23,12 +23,18 @@ If there is a GoboLinux recipe to build a program for which you have an RPM/DEB
 file, please use the `Compile` tool instead of the `ThirdPartyInstallers`
 utilities. We provide **zero** support for third-party packages.
 
+# Prerequisites
+
+This package requires `Dpkg` to decompress DEB files and `RPM` to handle RPM
+files. You can install both binary packages on GoboLinux with `InstallPackage`
+or build them from their sources with the `Compile` tool.
+
 # Usage
 
-Installing a single RPM file:
+Installing a single DEB file:
 
-`$ InstallPackage-RPM libfoo-2.1-3.x86_64.rpm`
+`$ ThirdPartyInstaller libfoo-2.1.3_amd64.deb`
 
 Merging multiple RPMs under a single entry at `/Programs`:
 
-`$ InstallPackage-RPM --app-name "LibreOffice" --version-number 5.2.3.3 *.rpm`
+`$ ThirdPartyInstaller --app-name "LibreOffice" --version-number 5.2.3.3 *.rpm`
