@@ -31,7 +31,7 @@ function fetch_package() {
         then wget_cmd="wget --no-check-certificate"
         else wget_cmd="wget"
         fi
-        Quiet ${wget_cmd} -c "${inputfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
+        ${wget_cmd} -c "${inputfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
         echo "${goboTemp}/${filename}"
     else
         echo "$inputfile"
@@ -456,9 +456,11 @@ inputnames=()
 eval `Args_To_Array inputfiles_`
 for entry in "${inputfiles_[@]}"
 do
-    inputfiles+=( "$(readlink -f ${entry} || echo ${entry})" )
-    inputnames+=( "$(thirdparty_name $entry)" )
+    inputfile=$(fetch_package "$entry")
+    inputfiles+=( "$inputfile" )
+    inputnames+=( "$(thirdparty_name $inputfile)" )
 done
+inputfilescount=$(( "${#inputfiles[@]}" -1 ))
 
 # These will be set by prepare_program_entry()
 unset programname
@@ -473,10 +475,12 @@ unset target
 flatteninglevel=$(determine_flattening_level)
 
 # Installation pipeline
-for entry in "${inputfiles[@]}"
+for i in $(seq 0 $inputfilescount)
 do
-    Log_Normal "Processing $(basename $entry)"
-    inputfile=$(fetch_package "$entry")
+    inputfile="${inputfiles[$i]}"
+    inputfile_is_tmpfile=$(Is_URL "${inputfiles_[$i]}")
+
+    Log_Normal "Processing $(basename $inputfile)"
     prepare_program_entry "$inputfile"
     Quiet pushd "$target" || Die "Could not enter $target"
 
@@ -485,7 +489,9 @@ do
     populate_resources "$inputfile"
 
     Quiet popd
-    Is_URL "$entry" && rm -f -- "$inputfile"
+    if [ "$inputfile_is_tmpfile" ]
+    then rm -f -- "$inputfile"
+    fi
 done
 
 # Symlinking
