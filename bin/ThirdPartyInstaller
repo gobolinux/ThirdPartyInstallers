@@ -349,7 +349,7 @@ function take_dependency_from_path() {
         if ! Boolean "no-web"
         then
             Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
-            depname=$(third_party_search_remotedb "$originalpath" "$arch" "$distro")
+            depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro")
             if [ "$depname" ]
             then
                 # TODO: we could now lookup the GoboLinux recipe store to find whether we
