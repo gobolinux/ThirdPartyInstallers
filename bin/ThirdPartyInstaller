@@ -34,7 +34,7 @@ function fetch_package() {
         ${wget_cmd} -c "${inputfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
         echo "${goboTemp}/${filename}"
     else
-        echo "$inputfile"
+        echo "$(readlink -f $inputfile)"
     fi
 }
 
