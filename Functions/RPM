@@ -81,6 +81,11 @@ function thirdparty_uncompress() {
         Log_Normal "Decompressing $payload_compressor payload."
         xz -d "$cpiofile"
         cpiofile=$(basename "$rpmfile").cpio
+    elif [ "$payload_compressor" = "lzma" ]
+    then
+        Log_Normal "Decompressing $payload_compressor payload."
+        lzma -d "$cpiofile"
+        cpiofile=$(basename "$rpmfile").cpio
     fi
 
     Log_Normal "Extracting CPIO archive."
