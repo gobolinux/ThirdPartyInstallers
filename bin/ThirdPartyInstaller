@@ -381,7 +381,6 @@ function lookup_pkgname() {
     # Query the GoboLinux recipe store.
     if ! Boolean "no-web"
     then
-
         local recipeurl=$(FindPackage -t recipe "${pkgname}" || FindPackage -t recipe "${goboname}")
         if [ "$recipeurl" ]
         then
@@ -427,6 +426,10 @@ function prepare_program_entry() {
     fi
 
     # Prepare /Programs tree and update program name (PrepareProgram may have changed its case)
+    if [ "$programname" = `echo "$programname" | tr '[:upper:]' '[:lower:]'` ]
+    then Log_Normal "Program name is $(GuessProgramCase $programname)"
+    else Log_Normal "Program name is $programname"
+    fi
     PrepareProgram -t "$programname" "$programversion"
     programname=$(ls $goboPrograms/ | grep -i "^${programname}$")
     target="$goboPrograms/$programname/$programversion"
