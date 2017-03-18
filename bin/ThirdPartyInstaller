@@ -127,6 +127,11 @@ function flatten_package() {
         cp ${verbose} -a ./usr/* .
         rm -rf -- ./usr
     fi
+    if [ -d "./local" ]
+    then
+        cp ${verbose} -a ./local/* .
+        rm -rf -- ./local
+    fi
     if [ -d "./etc" ]
     then
         mkdir -p Resources/Defaults/Settings
