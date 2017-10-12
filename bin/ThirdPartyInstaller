@@ -501,7 +501,6 @@ flatteninglevel=$(determine_flattening_level)
 for i in $(seq 0 $inputfilescount)
 do
     inputfile="${inputfiles[$i]}"
-    inputfile_is_tmpfile=$(Is_URL "${inputfiles_[$i]}")
 
     Log_Normal "Processing $(basename $inputfile)"
     prepare_program_entry "$inputfile"
@@ -512,7 +511,7 @@ do
     populate_resources "$inputfile"
 
     Quiet popd
-    if [ "$inputfile_is_tmpfile" ]
+    if Is_URL "${inputfiles_[$i]}"
     then rm -f -- "$inputfile"
     fi
 done
