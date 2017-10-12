@@ -445,6 +445,11 @@ function prepare_program_entry() {
     then Log_Normal "Program name is $(GuessProgramCase $programname)"
     else Log_Normal "Program name is $programname"
     fi
+
+    # If a package with the same name is already installed then reuse it to prevent CamelCaseInconsistencies
+    existing=$(ls $goboPrograms/ | grep -i "^${programname}$")
+    [ "$existing" ] && programname="$existing"
+
     PrepareProgram -t "$programname" "$programversion"
     programname=$(ls $goboPrograms/ | grep -i "^${programname}$")
     target="$goboPrograms/$programname/$programversion"
