@@ -16,7 +16,7 @@ scriptExample="xispita-2.0.3-1.x86_64.rpm"
 
 Add_Option_Entry   "n" "app-name"       "Override program name"
 Add_Option_Entry   "e" "version-number" "Override program version number"
-Add_Option_Entry   "l" "symlink"        "If symlinks should be created and wether they should be forced on conflicts."  "yes" "yes no force"
+Add_Option_Entry   "l" "symlink"        "If symlinks should be created and whether they should be forced on conflicts."  "yes" "yes no force"
 Add_Option_Boolean "W" "no-web"         "Do not search the web to resolve dependencies."
 Parse_Options "$@"
 
@@ -122,13 +122,23 @@ function flatten_package() {
         realpath ./opt/*/* | sed "s,$(realpath $PWD),,g" >> Resources/UnmanagedFiles
     }
 
+    function remove_links_to_opt() {
+        local fromdir="$1"
+        find "$fromdir/bin" "$fromdir/sbin" -type l 2> /dev/null | while read symlink
+        do
+            readlink -f "$symlink" | grep -q "/opt/" && rm ${verbose} -f "$symlink"
+        done
+    }
+
     if [ -d "./usr" ]
     then
+        remove_links_to_opt "./usr"
         cp ${verbose} -a ./usr/* .
         rm -rf -- ./usr
     fi
     if [ -d "./local" ]
     then
+        remove_links_to_opt "./local"
         cp ${verbose} -a ./local/* .
         rm -rf -- ./local
     fi
