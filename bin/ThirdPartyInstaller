@@ -469,7 +469,9 @@ if echo "$@" | grep -q "\.rpm" && echo "$@" | grep -q "\.deb"
 then Die "Error: cannot handle both RPM and DEB files in one shot."
 elif echo "$@" | grep -q "\.rpm"
 then Import RPM
-else Import DEB
+elif echo "$@" | grep -q "\.deb"
+then Import DEB
+else Die "Error: this tool can only handle RPM and DEB archives."
 fi
 
 # The inputfiles array holds the full path of all RPM/DEB input files
