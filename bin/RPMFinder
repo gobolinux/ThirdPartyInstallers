@@ -63,7 +63,7 @@ class RPMFinder:
 		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(baseuri, query), "-O", "-"])
 
 		htmlparser = RPMFind_Parser()
-		htmlparser.feed(html)
+		htmlparser.feed(str(html))
 		return htmlparser.get_pkgname()
 
 
