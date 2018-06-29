@@ -17,7 +17,7 @@ scriptExample="xispita-2.0.3-1.x86_64.rpm"
 Add_Option_Entry   "n" "app-name"       "Override program name"
 Add_Option_Entry   "e" "version-number" "Override program version number"
 Add_Option_Entry   "l" "symlink"        "If symlinks should be created and whether they should be forced on conflicts."  "yes" "yes no force"
-Add_Option_Boolean "W" "no-web"         "Do not search the web to resolve dependencies."
+Add_Option_Boolean "w" "web"            "Search the web to resolve dependencies."
 Parse_Options "$@"
 
 ### Functions #################################################################
@@ -361,7 +361,7 @@ function take_dependency_from_path() {
         # What we do now is to query remote RPM/DEB databases to find which package hosts the
         # dependency file.
 
-        if ! Boolean "no-web"
+        if Boolean "web"
         then
             Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
             depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro")
@@ -394,7 +394,7 @@ function lookup_pkgname() {
     done
 
     # Query the GoboLinux recipe store.
-    if ! Boolean "no-web"
+    if Boolean "web"
     then
         local recipeurl=$(FindPackage -t recipe "${pkgname}" || FindPackage -t recipe "${goboname}")
         if [ "$recipeurl" ]
