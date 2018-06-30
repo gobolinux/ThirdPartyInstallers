@@ -17,13 +17,17 @@ function thirdparty_arch() {
     fi
 }
 
-function thirdparty_distribution() {
+function thirdparty_distribution_name() {
     local debfile="$1"
     local distro=$(dpkg-deb --field "$debfile" "Distribution")
     if [ -z "$distro" ]
     then echo "Debian based (guessed)"
     else echo "$distro"
     fi
+}
+
+function thirdparty_distribution_code() {
+    return
 }
 
 function thirdparty_dependencies() {

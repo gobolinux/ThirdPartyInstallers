@@ -11,9 +11,14 @@ function thirdparty_arch() {
     rpminfo --arch "$rpmfile"
 }
 
-function thirdparty_distribution() {
+function thirdparty_distribution_name() {
     local rpmfile="$1"
     rpminfo --distribution "$rpmfile"
+}
+
+function thirdparty_distribution_code() {
+    local rpmfile="$1"
+    echo "$rpmfile" | awk -F. '{print $(NF-2)}'
 }
 
 function thirdparty_dependencies() {
@@ -64,8 +69,12 @@ function thirdparty_url() {
 function thirdparty_search_remotedb() {
     local path="$1"
     local arch="$2"
-    local distro="$3"
-    RPMFinder --path="$path" --arch="$arch" --distro="$distro"
+    local distroname="$3"
+    local distrocode="$4"
+    local result=$(RPMFinder --path="$path" --arch="$arch" --distroname="$distroname" --distrocode="$distrocode")
+    [ -z "$result" ] && [ "$arch" = "noarch" ] && result=$(RPMFinder --path="$path" --arch="$(uname -m)" --distroname="$distroname" --distrocode="$distrocode")
+    [ -z "$result" ] && return
+    echo "$result"
 }
 
 function thirdparty_uncompress() {

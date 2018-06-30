@@ -9,7 +9,7 @@ Import OptionParser
 ### Options ###################################################################
 
 scriptDescription="Install RPM and DEB packages on GoboLinux."
-scriptCredits="Copyright (C) Lucas C. Villa Real, 2016,2017 - Released under the GNU GPL."
+scriptCredits="Copyright (C) Lucas C. Villa Real, 2016-2018 - Released under the GNU GPL."
 helpOnNoArguments=yes
 scriptUsage="<file.rpm> [file.rpm]"
 scriptExample="xispita-2.0.3-1.x86_64.rpm"
@@ -223,7 +223,7 @@ function populate_dependencies() {
         then
             Log_Verbose "Skipping dependency passed as input file: $dependency"
         else
-            depinfo=$(lookup_pkgname "$dependency")
+            depinfo=$(lookup_pkgname "$inputfile" "$dependency")
             if [ "$depinfo" ]
             then echo "$depinfo"
             else echo "# Unresolved dependency: $dependency"
@@ -237,7 +237,7 @@ function populate_resources() {
     local arch=$(thirdparty_arch "$inputfile")
     local description=$(thirdparty_description "$inputfile")
     local release=$(thirdparty_release "$inputfile")
-    local distro=$(thirdparty_distribution "$inputfile")
+    local distro=$(thirdparty_distribution_name "$inputfile")
     
     Log_Normal "Populating Resources."
     mkdir -p Resources
@@ -307,7 +307,8 @@ function take_dependency_from_path() {
     local symbol="$3"
     local fullpath="$(readlink -f $path)"
     local arch=$(thirdparty_arch "$inputfile")
-    local distro=$(thirdparty_distribution "$inputfile")
+    local distro=$(thirdparty_distribution_name "$inputfile")
+    local distrocode=$(thirdparty_distribution_code "$inputfile")
 
     local depname=
     local depversion=
@@ -364,7 +365,7 @@ function take_dependency_from_path() {
         if Boolean "web"
         then
             Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
-            depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro")
+            depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro" "$distrocode")
             if [ "$depname" ]
             then
                 # TODO: we could now lookup the GoboLinux recipe store to find whether we
@@ -377,7 +378,8 @@ function take_dependency_from_path() {
 }
 
 function lookup_pkgname() {
-    local dependency="$1"
+    local inputfile="$1"
+    local dependency="$2"
     local pkgname=$(echo "$dependency" | cut -d'(' -f1)
 
     # GoboLinux doesn't have "devel" packages like most mainstream distros do
@@ -393,20 +395,30 @@ function lookup_pkgname() {
         fi
     done
 
-    # Query the GoboLinux recipe store.
     if Boolean "web"
     then
+        # Query the GoboLinux recipe store.
         local recipeurl=$(FindPackage -t recipe "${pkgname}" || FindPackage -t recipe "${goboname}")
         if [ "$recipeurl" ]
         then
             # TODO we're potentially discarding the wanted version(s) of the given dep
             echo "$(basename $recipeurl | sed 's,\(.*\)--.*--.*,\1,g')" && return 0
         fi
+
+        # Query the remote RPM database for $pkgname
+        local arch=$(thirdparty_arch "$inputfile")
+        local distro=$(thirdparty_distribution_name "$inputfile")
+        local distrocode=$(thirdparty_distribution_code "$inputfile")
+        Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $pkgname"
+        local depname=$(thirdparty_search_remotedb "$pkgname" "$arch" "$distro" "$distrocode")
+        if [ "$depname" ]
+        then
+            # TODO: download and install the RPM
+            echo "$depname" && return 0
+        fi
+    
+        # TODO Query the remote DEB database for $pkgname
     fi
-
-    # TODO Query the remote RPM database for $pkgname
-
-    # TODO Query the remote DEB database for $pkgname
 
     return 1
 }

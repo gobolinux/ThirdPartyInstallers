@@ -9,6 +9,7 @@
 # Released under the GNU GPL version 2 or above.
 
 import os
+import re
 import sys
 import argparse
 import subprocess
@@ -34,53 +35,98 @@ class RPMFind_Parser(HTMLParser):
 		if len(self.tags) and self.tags[-1] == "a" and data.find(".rpm") >= 0:
 			self.candidates.append(data)
 
-	def get_pkgname(self):
+	def get_pkgnames(self):
 		if len(self.candidates) == 0:
 			return ""
-		name = os.path.commonprefix(self.candidates)
-		if name.endswith("-"):
-			name = name[:-1]
-		return name
+		return self.candidates
 
 
 class RPMFinder:
-	def find(self, path, arch, distro):
+	def find(self, path, arch, distroname, distrocode):
 		'''
 		Searches rpmfind.net for a given file. Arch and distro can
-		be provided to reduce the search scope. Returns the package
+		be provided to narrow the search scope. Returns the package
 		name on success or an empty string if no matches were found.
 		'''
 		self.path = path
 		self.arch = arch
-		self.distro = distro
-		return self.__search_rpmfind_net()
+		self.distroname = distroname.replace(" ", "+")
+		self.distrocode = distrocode
+		self.name = path
+		for token in [">=", ">", "<=", "<", "="]:
+			self.name = self.name.replace(token, " ")
+		self.name = self.name.split(" ")[0]
+
+		matches = self.__search_rpmfind_net()
+		if len(matches) == 0:
+			return []
+		if any(op in self.path for op in [">", "<", "="]):
+			op, version = self.__get_op_and_version()
+			return self.__filter(matches, op, version)
+		else:
+			return matches
+
+	def __filter(self, matches, op, version):
+		filtered = []
+		for match in matches:
+			pkg_version = match.replace(self.name, "").replace("{0}.{1}.rpm".format(self.distrocode, self.arch), "").strip("-").strip(".")
+			sys.stderr.write("package {0}: {1} {2} {3}?\n".format(match, pkg_version, op, version))
+
+			# TODO: filter based on op and version
+			if len(filtered) == 0:
+				filtered.append(match)
+		return filtered
+
+	def __get_op_and_version(self):
+		if ">=" in self.path:
+			return ">=", self.path.split(">=")[1].strip()
+		elif ">" in self.path:
+			return ">", self.path.split(">")[1].strip()
+		elif "<=" in self.path:
+			return "<=", self.path.split("<=")[1].strip()
+		elif "<" in self.path:
+			return "<", self.path.split("<")[1].strip()
+		elif "=" in self.path:
+			return "=", self.path.split("=")[1].strip()
+		else:
+			sys.stderr.write("could not extract op and version from {}\n".format(self.path))
+			return None, None
 
 	def __search_rpmfind_net(self):
 		path = self.path.replace("/", "%2F")
-		arch = self.arch
 		baseuri = "http://rpmfind.net/linux/rpm2html/search.php"
-		query = "?query={0}&submit=Search+...&system=&arch={1}".format(path, arch)
+		query = "?query={0}&submit=Search+...&system={1}&arch={2}".format(path, self.distroname, self.arch)
 		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(baseuri, query), "-O", "-"])
+
+		# Compile a regex that catches package names derived from the basename given by self.path.
+		# Example: perl-DBICx when perl-DBI is wanted.
+		regex = re.compile(r"{0}\-[0-9]+.*{1}.{2}.rpm".format(self.name, self.distrocode, self.arch))
 
 		htmlparser = RPMFind_Parser()
 		htmlparser.feed(str(html))
-		return htmlparser.get_pkgname()
+		pkgnames = htmlparser.get_pkgnames()
+		result = []
+		for pkgname in pkgnames:
+			if regex.match(pkgname):
+				result.append(pkgname)
+		return result
 
 
 def main():
 	argparser = argparse.ArgumentParser(argument_default="")
 	argparser.add_argument("--path", type=str, help="File name to search for in the remote RPM databases")
 	argparser.add_argument("--arch", type=str, help="Architecture (optional)")
-	argparser.add_argument("--distro", type=str, help="Distribution (optional)")
+	argparser.add_argument("--distroname", type=str, help="Distribution name (optional)")
+	argparser.add_argument("--distrocode", type=str, help="Distribution code (optional)")
 	args = argparser.parse_args()
 
 	if len(args.path) == 0:
 		argparser.print_help()
 		sys.exit(1)
 
-	pkgname = RPMFinder().find(args.path, args.arch, args.distro)
+	pkgname = RPMFinder().find(args.path, args.arch, args.distroname, args.distrocode)
 	if len(pkgname):
-		print(pkgname)
+		print(pkgname[0])
 
 if __name__ == "__main__":
 	main()
