@@ -71,10 +71,10 @@ function thirdparty_search_remotedb() {
     local arch="$2"
     local distroname="$3"
     local distrocode="$4"
-    local result=$(RPMFinder --path="$path" --arch="$arch" --distroname="$distroname" --distrocode="$distrocode")
-    [ -z "$result" ] && [ "$arch" = "noarch" ] && result=$(RPMFinder --path="$path" --arch="$(uname -m)" --distroname="$distroname" --distrocode="$distrocode")
-    [ -z "$result" ] && return
-    echo "$result"
+    if [ "$arch" = "noarch" ]
+    then arch="${arch},$(uname -m)"
+    fi
+    RPMFinder --path="$path" --arch="$arch" --distroname="$distroname" --distrocode="$distrocode"
 }
 
 function thirdparty_uncompress() {
