@@ -16,6 +16,46 @@ import subprocess
 from html.parser import HTMLParser
 
 
+class VersionCmp:
+	def test(self, candidate, reference):
+		if candidate[0].isalpha() and reference[0].isalpha():
+			return self.compare(candidate, reference)
+
+		c_parts = candidate.split(".")
+		r_parts = reference.split(".")
+		while True:
+			if len(c_parts) <= 1 or len(r_parts) <= 1:
+				# Return a comparison of the major numbers
+				try:
+					a = int("".join(c for c in c_parts[0] if c.isdigit()))
+					b = int("".join(r for r in r_parts[0] if r.isdigit()))
+					a_chars = "".join(c for c in c_parts[0] if not c.isdigit())
+					b_chars = "".join(r for r in r_parts[0] if not r.isdigit())
+					if a == b and len(a_chars) and len(b_chars):
+						return self.compare(a_chars, b_chars)
+				except ValueError:
+					pass
+				return self.compare(".".join(c_parts), ".".join(r_parts))
+			else:
+				# compare 2 numbers
+				try:
+					a = int("".join(c for c in c_parts[0] if c.isdigit()))
+					b = int("".join(r for r in r_parts[0] if r.isdigit()))
+					ret = self.compare(a, b)
+					if ret != 0:
+						return ret
+				except ValueError:
+					return self.compare(".".join(c_parts), ".".join(r_parts))
+
+			c_parts = c_parts[1:]
+			r_parts = r_parts[1:]
+
+	def compare(self, a, b):
+		if a == b:
+			return 0
+		return -1 if a < b else 1
+
+
 class RPMFind_Parser(HTMLParser):
 	'''
 	Parses the HTML data output by rpmfind.net
@@ -71,9 +111,16 @@ class RPMFinder:
 		for match in matches:
 			pkg_version = match.replace(self.name, "").replace("{0}.{1}.rpm".format(self.distrocode, self.arch), "").strip("-").strip(".")
 			sys.stderr.write("package {0}: {1} {2} {3}?\n".format(match, pkg_version, op, version))
-
-			# TODO: filter based on op and version
-			if len(filtered) == 0:
+			vcmp = VersionCmp()
+			if op == ">" and vcmp.test(pkg_version, version) > 0:
+				filtered.append(match)
+			elif op == ">=" and vcmp.test(pkg_version, version) >= 0:
+				filtered.append(match)
+			elif op == "=" and vcmp.test(pkg_version, version) == 0:
+				filtered.append(match)
+			elif op == "<" and vcmp.test(pkg_version, version) < 0:
+				filtered.append(match)
+			elif op == "<=" and vcmp.test(pkg_version, version) <= 0:
 				filtered.append(match)
 		return filtered
 
