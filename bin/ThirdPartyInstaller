@@ -455,7 +455,7 @@ function prepare_program_entry() {
     existing=$(ls $goboPrograms/ | grep -i "^${programname}$")
     [ "$existing" ] && programname="$existing"
 
-    PrepareProgram -t "$programname" "$programversion"
+    PrepareProgram --batch --keep -t "$programname" "$programversion"
     programname=$(ls $goboPrograms/ | grep -i "^${programname}$")
     target="$goboPrograms/$programname/$programversion"
 }
