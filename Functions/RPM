@@ -98,6 +98,6 @@ function thirdparty_uncompress() {
     fi
 
     Log_Normal "Extracting CPIO archive."
-    cpio -d -i < "$cpiofile"
+    cpio --quiet -d -i < "$cpiofile"
     rm -f -- "$cpiofile"
 }
