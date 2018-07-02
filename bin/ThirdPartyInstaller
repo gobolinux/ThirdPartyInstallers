@@ -145,7 +145,7 @@ function flatten_package() {
     if [ -d "./etc" ]
     then
         mkdir -p Resources/Defaults/Settings
-        mv ${verbose} ./etc/* Resources/Defaults/Settings
+        Quiet mv ./etc/* Resources/Defaults/Settings
         rm -rf -- ./etc
     fi
     if [ -d "./lib64" ]
@@ -161,7 +161,7 @@ function flatten_package() {
     then
         mkdir -p Resources/Unmanaged/$goboVariable
         find ./var | sed "s,./var,$goboVariable,g" >> Resources/UnmanagedFiles
-        mv ${verbose} ./var/* Resources/Unmanaged/$goboVariable
+        Quiet mv ./var/* Resources/Unmanaged/$goboVariable
         rm -rf -- ./var
     fi
     if [ -d "./opt" ]
