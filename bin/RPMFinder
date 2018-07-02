@@ -64,6 +64,14 @@ class VersionCmp:
 		return -1 if a < b else 1
 
 
+class PackageInfo:
+	def __init__(self):
+		self.name = ""
+		self.infopage = ""
+		self.candidate_urls = {}
+		self.urls = {}
+
+
 class RPMFind_Parser(HTMLParser):
 	'''
 	Parses the HTML data output by rpmfind.net
@@ -73,7 +81,7 @@ class RPMFind_Parser(HTMLParser):
 		self.attrs = []
 		self.names = []
 		self.infopages = []
-		self.candidates = []
+		self.candidates = {}
 		HTMLParser.__init__(self)
 
 	def handle_starttag(self, tag, attrs):
@@ -86,7 +94,8 @@ class RPMFind_Parser(HTMLParser):
 
 	def handle_data(self, data):
 		if len(self.tags) and self.tags[-1] == "a" and data.find(".rpm") >= 0:
-			self.candidates.append(data)
+			href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
+			self.candidates[data] = href
 		elif len(self.tags) and self.tags[-1] == "a" and data.find(".html") >= 0:
 			# self.attrs[-1] = [("href", "\\'/linux/RPM/fedora/....html\\'")]
 			href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
@@ -95,23 +104,18 @@ class RPMFind_Parser(HTMLParser):
 			pkgname = data.replace("Name:", "").strip()
 			self.names.append(pkgname)
 
-	def get_packages(self):
-		if len(self.candidates) == 0:
-			return ""
-		return self.candidates
-
-	def get_infopage(self):
-		if len(self.infopages) == 0:
-			return ""
-		return self.infopages[0]
-
-	def get_name(self):
-		if len(self.names) == 0:
-			return ""
-		return self.names[0]
+	def get_pkginfo(self, baseuri=""):
+		info = PackageInfo()
+		info.name = "" if len(self.names) == 0 else self.names[0]
+		info.infopage = "" if len(self.infopages) == 0 else self.infopages[0]
+		info.candidate_urls = dict([(k,baseuri+self.candidates[k]) for k in self.candidates.keys()])
+		return info
 
 
 class RPMFinder:
+	def __init__(self):
+		self.baseuri = "http://rpmfind.net"
+
 	def find(self, path, arch, distroname, distrocode):
 		'''
 		Searches rpmfind.net for a given file. Arch and distro can
@@ -125,28 +129,31 @@ class RPMFinder:
 
 		requested_archs = self.arch.split(",")
 		for i,arch in enumerate(requested_archs):
-			infopage, search_results = self.__search_rpmfind_net(arch)
-			name = self.__get_pkgname(infopage)
-			matches = self.__filter_rpmfind_net(search_results, name, arch)
+			pkginfo = self.__search_rpmfind_net(arch)
+			matches = self.__filter_rpmfind_net(pkginfo.candidate_urls.keys(), pkginfo.name, arch)
 			if len(matches) == 0 and i == len(requested_archs)-1:
 				# User possibly requested more than one architecture (e.g., "noarch,x86_64")
 				# and we had no exact package name matches. Since the RPM database holds aliases
 				# for several packages we must give a second chance to the results returned
 				# by our call to search_rpmfind_net().
-				matches = search_results
+				matches = pkginfo.candidate_urls.keys()
 			if len(matches) > 0:
 				if any(op in self.path for op in [">", "<", "="]):
 					op, version = self.__get_op_and_version()
-					return self.__filter(matches, op, version, name, arch)
+					for pkgname in self.__filter(matches, op, version, pkginfo.name, arch):
+						pkginfo.urls[pkgname] = pkginfo.candidate_urls[pkgname]
+					if len(pkginfo.urls):
+						return pkginfo
 				else:
-					return matches
-		return []
+					for pkgname in matches:
+						pkginfo.urls[pkgname] = pkginfo.candidate_urls[pkgname]
+					return pkginfo
+		return None
 
 	def __filter(self, matches, op, version, name, arch):
 		filtered = []
 		for match in matches:
 			pkg_version = match.replace(name, "").replace("{0}.{1}.rpm".format(self.distrocode, arch), "").strip("-").strip(".")
-			sys.stderr.write("package {0}: {1} {2} {3}?\n".format(match, pkg_version, op, version))
 			vcmp = VersionCmp()
 			if op == ">" and vcmp.test(pkg_version, version) > 0:
 				filtered.append(match)
@@ -175,21 +182,16 @@ class RPMFinder:
 			sys.stderr.write("could not extract op and version from {}\n".format(self.path))
 			return None, None
 
-	def __get_pkgname(self, infopage):
-		baseuri = "http://rpmfind.net"
-		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(baseuri, infopage), "-O", "-"])
-		htmlparser = RPMFind_Parser()
-		htmlparser.feed(str(html))
-		return htmlparser.get_name()
-
 	def __search_rpmfind_net(self, arch):
 		path = self.path.replace("/", "%2F")
-		baseuri = "http://rpmfind.net/linux/rpm2html/search.php"
-		query = "?query={0}&submit=Search+...&system={1}&arch={2}".format(path, self.distroname, arch)
-		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(baseuri, query), "-O", "-"])
+		query = "/linux/rpm2html/search.php"
+		query += "?query={0}&submit=Search+...&system={1}&arch={2}".format(path, self.distroname, arch)
 		htmlparser = RPMFind_Parser()
+		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, query), "-O", "-"])
 		htmlparser.feed(str(html))
-		return htmlparser.get_infopage(), htmlparser.get_packages()
+		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, htmlparser.get_pkginfo().infopage), "-O", "-"])
+		htmlparser.feed(str(html))
+		return htmlparser.get_pkginfo(self.baseuri)
 
 	def __filter_rpmfind_net(self, pkgnames, name, arch):
 		# Compile a regex that catches package names derived from the basename given by self.path.
@@ -214,9 +216,10 @@ def main():
 		argparser.print_help()
 		sys.exit(1)
 
-	pkgname = RPMFinder().find(args.path, args.arch, args.distroname, args.distrocode)
-	if len(pkgname):
-		print(pkgname[0])
+	pkginfo = RPMFinder().find(args.path, args.arch, args.distroname, args.distrocode)
+	if pkginfo:
+		for pkgname in pkginfo.urls:
+			print("{0} # {1}".format(pkginfo.name, pkginfo.urls[pkgname]))
 
 if __name__ == "__main__":
 	main()
