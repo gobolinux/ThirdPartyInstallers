@@ -539,7 +539,7 @@ fi
 if Boolean "install-dependencies"
 then
     install_cmd="$0 --symlink=$(Entry symlink) --install-dependencies"
-    cat "$target/Resources/Dependencies" 2> /dev/null | grep "#" | while read line
+    cat "$target/Resources/Dependencies" 2> /dev/null | grep "http*://" | while read line
     do
         depname=$(echo "$line" | awk {'print $1'})
         depurl=$(echo "$line" | awk {'print $3'})
