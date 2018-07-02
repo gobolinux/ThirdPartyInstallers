@@ -93,7 +93,7 @@ class RPMFind_Parser(HTMLParser):
 		self.attrs.pop()
 
 	def handle_data(self, data):
-		if len(self.tags) and self.tags[-1] == "a" and data.find(".rpm") >= 0:
+		if len(self.tags) and self.tags[-1] == "a" and data.find(".rpm") >= 0 and data.find(".src.rpm") < 0:
 			href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
 			self.candidates[data] = href
 		elif len(self.tags) and self.tags[-1] == "a" and data.find(".html") >= 0:
