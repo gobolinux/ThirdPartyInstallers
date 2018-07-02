@@ -493,6 +493,12 @@ inputnames=()
 eval `Args_To_Array inputfiles_`
 for entry in "${inputfiles_[@]}"
 do
+    if [ ! -f "$entry" ]
+    then Die "$entry: file not found"
+    fi
+done
+for entry in "${inputfiles_[@]}"
+do
     inputfile=$(fetch_package "$entry")
     inputfiles+=( "$inputfile" )
     inputnames+=( "$(thirdparty_name $inputfile)" )
