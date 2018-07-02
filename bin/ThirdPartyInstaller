@@ -14,10 +14,10 @@ helpOnNoArguments=yes
 scriptUsage="<file.rpm> [file.rpm]"
 scriptExample="xispita-2.0.3-1.x86_64.rpm"
 
-Add_Option_Entry   "n" "app-name"       "Override program name"
-Add_Option_Entry   "e" "version-number" "Override program version number"
-Add_Option_Entry   "l" "symlink"        "If symlinks should be created and whether they should be forced on conflicts."  "yes" "yes no force"
-Add_Option_Boolean "w" "web"            "Search the web to resolve dependencies."
+Add_Option_Entry   "n" "app-name"              "Override program name"
+Add_Option_Entry   "e" "version-number"        "Override program version number"
+Add_Option_Entry   "l" "symlink"               "If symlinks should be created and whether they should be forced on conflicts."  "yes" "yes no force"
+Add_Option_Boolean "d" "install-dependencies"  "Attempt to download and install dependencies"
 Parse_Options "$@"
 
 ### Functions #################################################################
@@ -362,17 +362,14 @@ function take_dependency_from_path() {
         # What we do now is to query remote RPM/DEB databases to find which package hosts the
         # dependency file.
 
-        if Boolean "web"
+        Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
+        depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro" "$distrocode")
+        if [ "$depname" ]
         then
-            Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
-            depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro" "$distrocode")
-            if [ "$depname" ]
-            then
-                # TODO: we could now lookup the GoboLinux recipe store to find whether we
-                # have it or not
-                echo "$(GuessProgramCase $depname)"
-                return 0
-            fi
+            # TODO: we could now lookup the GoboLinux recipe store to find whether we
+            # have it or not
+            echo "$(GuessProgramCase $depname)"
+            return 0
         fi
     fi
 }
@@ -395,30 +392,26 @@ function lookup_pkgname() {
         fi
     done
 
-    if Boolean "web"
+    # Query the GoboLinux recipe store.
+    local recipeurl=$(FindPackage -t recipe "${pkgname}" || FindPackage -t recipe "${goboname}")
+    if [ "$recipeurl" ]
     then
-        # Query the GoboLinux recipe store.
-        local recipeurl=$(FindPackage -t recipe "${pkgname}" || FindPackage -t recipe "${goboname}")
-        if [ "$recipeurl" ]
-        then
-            # TODO we're potentially discarding the wanted version(s) of the given dep
-            echo "$(basename $recipeurl | sed 's,\(.*\)--.*--.*,\1,g')" && return 0
-        fi
-
-        # Query the remote RPM database for $pkgname
-        local arch=$(thirdparty_arch "$inputfile")
-        local distro=$(thirdparty_distribution_name "$inputfile")
-        local distrocode=$(thirdparty_distribution_code "$inputfile")
-        Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $pkgname"
-        local depname=$(thirdparty_search_remotedb "$pkgname" "$arch" "$distro" "$distrocode")
-        if [ "$depname" ]
-        then
-            # TODO: download and install the RPM
-            echo "$depname" && return 0
-        fi
-    
-        # TODO Query the remote DEB database for $pkgname
+        # TODO we're potentially discarding the wanted version(s) of the given dep
+        echo "$(basename $recipeurl | sed 's,\(.*\)--.*--.*,\1,g')" && return 0
     fi
+
+    # Query the remote RPM database for $pkgname
+    Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $pkgname"
+    local arch=$(thirdparty_arch "$inputfile")
+    local distro=$(thirdparty_distribution_name "$inputfile")
+    local distrocode=$(thirdparty_distribution_code "$inputfile")
+    local depname=$(thirdparty_search_remotedb "$pkgname" "$arch" "$distro" "$distrocode")
+    if [ "$depname" ]
+    then
+        echo "$depname" && return 0
+    fi
+
+    # TODO Query the remote DEB database for $pkgname
 
     return 1
 }
@@ -493,9 +486,8 @@ inputnames=()
 eval `Args_To_Array inputfiles_`
 for entry in "${inputfiles_[@]}"
 do
-    if [ ! -f "$entry" ]
-    then Die "$entry: file not found"
-    fi
+    Is_URL "$entry" && continue
+    [ ! -f "$entry" ] && Die "$entry: file not found"
 done
 for entry in "${inputfiles_[@]}"
 do
@@ -537,12 +529,26 @@ do
 done
 
 # Symlinking
-if [ $(Entry "symlink") = "no" ]
+if [ $(Entry "symlink") != "no" ]
 then
-    Log_Normal "Done."
-    exit 0
+    [ -d "$target/Resources/Defaults/Settings" ] && UpdateSettings "$programname" "$programversion"
+    SymlinkProgram "$programname" "$programversion"
 fi
 
-[ -d "$target/Resources/Defaults/Settings" ] && UpdateSettings "$programname" "$programversion"
-SymlinkProgram "$programname" "$programversion"
+# Install dependencies
+if Boolean "install-dependencies"
+then
+    install_cmd="$0 --symlink=$(Entry symlink) --install-dependencies"
+    cat "$target/Resources/Dependencies" 2> /dev/null | grep "#" | while read line
+    do
+        depname=$(echo "$line" | awk {'print $1'})
+        depurl=$(echo "$line" | awk {'print $3'})
+        if ! [ -d "$goboPrograms/$depname" ]
+        then
+            Log_Normal "Installing dependency $depurl"
+            $install_cmd -n "$depname" "$depurl"
+        fi
+    done
+fi
+
 Log_Normal "Done."
