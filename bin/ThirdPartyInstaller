@@ -400,7 +400,7 @@ function lookup_pkgname() {
         echo "$(basename $recipeurl | sed 's,\(.*\)--.*--.*,\1,g')" && return 0
     fi
 
-    # Query the remote RPM database for $pkgname
+    # Query the remote database for $pkgname
     Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $pkgname"
     local arch=$(thirdparty_arch "$inputfile")
     local distro=$(thirdparty_distribution_name "$inputfile")
@@ -410,8 +410,6 @@ function lookup_pkgname() {
     then
         echo "$depname" && return 0
     fi
-
-    # TODO Query the remote DEB database for $pkgname
 
     return 1
 }
@@ -543,10 +541,11 @@ then
     do
         depname=$(echo "$line" | awk {'print $1'})
         depurl=$(echo "$line" | awk {'print $3'})
-        if ! [ -d "$goboPrograms/$depname" ]
+        programname="$(GuessProgramCase $depname)"
+        if ! [ -d "$goboPrograms/$programname" ]
         then
-            Log_Normal "Installing dependency $depurl"
-            $install_cmd -n "$depname" "$depurl"
+            Log_Normal "Installing dependency $depname from $depurl"
+            bash -c "$install_cmd -n $depname $depurl"
         fi
     done
 fi
