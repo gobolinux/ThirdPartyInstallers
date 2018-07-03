@@ -16,7 +16,7 @@ scriptExample="xispita-2.0.3-1.x86_64.rpm"
 
 Add_Option_Entry   "n" "app-name"              "Override program name"
 Add_Option_Entry   "e" "version-number"        "Override program version number"
-Add_Option_Entry   "l" "symlink"               "If symlinks should be created and whether they should be forced on conflicts."  "yes" "yes no force"
+Add_Option_Entry   "l" "symlink"               "If symlinks should be created and whether they should be forced on conflicts."  "no" "yes no force"
 Add_Option_Boolean "d" "install-dependencies"  "Attempt to download and install dependencies"
 Parse_Options "$@"
 
