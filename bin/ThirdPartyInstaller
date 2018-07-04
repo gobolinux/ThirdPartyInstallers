@@ -220,8 +220,14 @@ function populate_dependencies() {
             wantedsymbol=$(echo "$dependency" | cut -d'(' -f2 | cut -d')' -f1)
             depinfo=$(take_dependency_from_path "$inputfile" "$goboLibraries/$libname" "$wantedsymbol")
             if [ "$depinfo" ]
-            then echo "$depinfo"
-            else echo "# Unresolved path-based library dependency: $dependency"
+            then
+                echo "$depinfo"
+            else
+                depinfo=$(lookup_pkgname "$inputfile" "$dependency")
+                if [ "$depinfo" ]
+                then echo "$depinfo"
+                else echo "# Unresolved path-based library dependency: $dependency"
+                fi
             fi
         elif is_basic_symbol "$dependency"
         then
@@ -407,21 +413,28 @@ function lookup_pkgname() {
         echo "$(basename $recipeurl | sed 's,\(.*\)--.*--.*,\1,g')" && return 0
     fi
 
-    # Query the remote database for $pkgname
-    Log_Normal "Searching the remote $(thirdparty_backend) database for the package providing $pkgname"
-    local arch=$(thirdparty_arch "$inputfile")
-    local distro=$(thirdparty_distribution_name "$inputfile")
-    local distrocode=$(thirdparty_distribution_code "$inputfile")
-    local depname=$(thirdparty_search_remotedb "$pkgname" "$arch" "$distro" "$distrocode")
-    if [ "$depname" ]
-    then
-        local originalname=$(echo $depname | cut -d" " -f1)
-        local prettyname="$(pretty_name $originalname)"
-        local result=$(echo "$depname" | sed "s,$originalname,$prettyname,1")
-        Log_Verbose "$result"
-        echo "$result" && return 0
+    # Query the remote database for $pkgnames
+    if [ "$pkgname" != "$dependency" ]
+    then pkgnames=( "$pkgname" "$dependency" )
+    else pkgnames=( "$pkgname" )
     fi
 
+    for pkgname_to_search in "${pkgnames[@]}"
+    do
+        Log_Normal "Searching the remote $(thirdparty_backend) database for the package providing $pkgname_to_search"
+        local arch=$(thirdparty_arch "$inputfile")
+        local distro=$(thirdparty_distribution_name "$inputfile")
+        local distrocode=$(thirdparty_distribution_code "$inputfile")
+        local depname=$(thirdparty_search_remotedb "$pkgname_to_search" "$arch" "$distro" "$distrocode")
+        if [ "$depname" ]
+        then
+            local originalname=$(echo $depname | cut -d" " -f1)
+            local prettyname="$(pretty_name $originalname)"
+            local result=$(echo "$depname" | sed "s,$originalname,$prettyname,1")
+            Log_Verbose "$result"
+            echo "$result" && return 0
+        fi
+    done
     return 1
 }
 
