@@ -239,11 +239,19 @@ class RPMFinder:
 		query = "/linux/rpm2html/search.php"
 		query += "?query={0}&submit=Search+...&system={1}&arch={2}".format(path, self.distroname, arch)
 		htmlparser = RPMFind_Parser()
-		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, query), "-O", "-"])
-		htmlparser.feed(str(html))
-		for infopage in htmlparser.get_pkginfo().infopages:
-			html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, infopage), "-O", "-"])
+		try:
+			html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, query), "-O", "-"])
 			htmlparser.feed(str(html))
+		except subprocess.CalledProcessError:
+			sys.stderr.write("error retrieving url {0}{1}".format(self.baseuri, query))
+			return None
+		for infopage in htmlparser.get_pkginfo().infopages:
+			try:
+				html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, infopage), "-O", "-"])
+				htmlparser.feed(str(html))
+			except subprocess.CalledProcessError:
+				sys.stderr.write("error retrieving url {0}{1}".format(self.baseuri, infopage))
+				return None
 		return htmlparser.get_pkginfo(self.baseuri)
 
 
