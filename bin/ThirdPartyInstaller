@@ -54,7 +54,6 @@ function determine_flattening_level() {
     local rootdirs="bin$\|sbin$\|lib$\|lib64$\|libexec$\|include$\|share$"
     local filenames=$(for i in "${inputfiles[@]}"; do thirdparty_filenames $i; done)
 
-    Log_Verbose "$filenames"
     if echo "$filenames" | grep -q "/opt/$rootdirs"
     then
         # 1-level /opt hierarchy
@@ -83,6 +82,7 @@ function determine_flattening_level() {
             echo "2"
         fi
     fi
+    Log_Debug "$filenames"
 }
 
 function flatten_package() {
@@ -346,7 +346,7 @@ function take_dependency_from_path() {
             done
         fi
 
-        Log_Verbose "Fallback: $depname $depversion"
+        Log_Verbose "Symbol $symbol not found, will resort to $depname $depversion as fallback"
         echo "$depname $depversion"
     else
         # We have a path, but we don't have a link to that file under /System/Index.
