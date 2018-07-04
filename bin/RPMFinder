@@ -166,6 +166,8 @@ class RPMFinder:
 		requested_archs = self.arch.split(",")
 		for archnum,arch in enumerate(requested_archs):
 			pkginfo = self.__search_rpmfind_net(arch)
+			if pkginfo is None:
+				continue
 			indexes = self.__filter_by_name(pkginfo.urls, pkginfo.name, arch)
 			if len(indexes) == 0 and archnum == len(requested_archs)-1:
 				# User possibly requested more than one architecture (e.g., "noarch,x86_64")
@@ -243,15 +245,16 @@ class RPMFinder:
 			html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, query), "-O", "-"])
 			htmlparser.feed(str(html))
 		except subprocess.CalledProcessError:
-			sys.stderr.write("error retrieving url {0}{1}".format(self.baseuri, query))
+			# Fatal error
+			sys.stderr.write("error retrieving url {0}{1}\n".format(self.baseuri, query))
 			return None
 		for infopage in htmlparser.get_pkginfo().infopages:
 			try:
 				html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, infopage), "-O", "-"])
 				htmlparser.feed(str(html))
 			except subprocess.CalledProcessError:
-				sys.stderr.write("error retrieving url {0}{1}".format(self.baseuri, infopage))
-				return None
+				# Non-fatal error
+				sys.stderr.write("error retrieving url {0}{1}\n".format(self.baseuri, infopage))
 		return htmlparser.get_pkginfo(self.baseuri)
 
 
