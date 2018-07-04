@@ -351,9 +351,8 @@ function take_dependency_from_path() {
             do
                 lookup_symbol "$depname" "$testversion" "$arch" "$symbol" && return 0
             done
+            Log_Verbose "Symbol $symbol not found, will resort to $depname $depversion as fallback"
         fi
-
-        Log_Verbose "Symbol $symbol not found, will resort to $depname $depversion as fallback"
         echo "$depname $depversion"
     else
         # We have a path, but we don't have a link to that file under /System/Index.
@@ -365,8 +364,11 @@ function take_dependency_from_path() {
             depname=$(echo "$fullpath" | cut -d/ -f3)
             testversion=$(echo "$fullpath" | cut -d/ -f4)
             [ -z "$depversion" ] && depversion="$testversion"
-            Log_Verbose "Looking for symbol on candidate file $candidate ($depname, $testversion)"
-            lookup_symbol "$depname" "$testversion" "$arch" "$symbol" && return 0
+            if [ "$symbol" ]
+            then
+                Log_Verbose "Looking for symbol on candidate file $candidate ($depname, $testversion)"
+                lookup_symbol "$depname" "$testversion" "$arch" "$symbol" && return 0
+            fi
         done
 
         # We don't have a match. If we have a file name that satisfies the path but
