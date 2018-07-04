@@ -22,6 +22,13 @@ Parse_Options "$@"
 
 ### Functions #################################################################
 
+function pretty_name() {
+    local program="$1"
+    local pretty=$(GuessProgramCase "$program")
+    [ "$pretty" = "$program" ] && pretty=$(NamingConventions "$program")
+    echo "$pretty"
+}
+
 function fetch_package() {
     local inputfile="$1"
     local filename=$(basename "$inputfile")
@@ -368,7 +375,7 @@ function take_dependency_from_path() {
         then
             # TODO: we could now lookup the GoboLinux recipe store to find whether we
             # have it or not
-            echo "$(GuessProgramCase $depname)"
+            echo "$(pretty_name $depname)"
             return 0
         fi
     fi
@@ -409,7 +416,7 @@ function lookup_pkgname() {
     if [ "$depname" ]
     then
         local originalname=$(echo $depname | cut -d" " -f1)
-        local prettyname="$(GuessProgramCase $originalname)"
+        local prettyname="$(pretty_name $originalname)"
         local result=$(echo "$depname" | sed "s,$originalname,$prettyname,1")
         Log_Verbose "$result"
         echo "$result" && return 0
@@ -449,7 +456,7 @@ function prepare_program_entry() {
 
     # Prepare /Programs tree and update program name (PrepareProgram may have changed its case)
     if [ "$programname" = `echo "$programname" | tr '[:upper:]' '[:lower:]'` ]
-    then Log_Normal "Program name is $(GuessProgramCase $programname)"
+    then Log_Normal "Program name is $(pretty_name $programname)"
     else Log_Normal "Program name is $programname"
     fi
 
@@ -545,7 +552,7 @@ then
     do
         depname=$(echo "$line" | awk {'print $1'})
         depurl=$(echo "$line" | awk {'print $3'})
-        programname="$(GuessProgramCase $depname)"
+        programname="$(pretty_name $depname)"
         if ! [ -d "$goboPrograms/$programname" ]
         then
             Log_Normal "Installing dependency $depname from $depurl"
