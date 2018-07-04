@@ -137,6 +137,13 @@ function flatten_package() {
         done
     }
 
+    # Prune empty top-level directories and symlinks
+    rmdir ${verbose} * 2> /dev/null
+    for linkname in bin sbin lib lib64
+    do
+        [ -L "$linkname" ] && rm ${verbose} -f "$linkname"
+    done
+
     if [ -d "./usr" ]
     then
         remove_links_to_opt "./usr"
