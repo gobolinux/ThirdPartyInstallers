@@ -551,7 +551,7 @@ then
     cat "$target/Resources/Dependencies" 2> /dev/null | grep "http*://" | while read line
     do
         depname=$(echo "$line" | awk {'print $1'})
-        depurl=$(echo "$line" | awk {'print $3'})
+        depurl=$(echo "$line" | awk {'print $NF'})
         programname="$(pretty_name $depname)"
         if ! [ -d "$goboPrograms/$programname" ]
         then
