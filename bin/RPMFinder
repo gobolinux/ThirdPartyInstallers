@@ -17,6 +17,27 @@ from html.parser import HTMLParser
 
 
 class VersionCmp:
+	def __init__(self, obj, *args):
+		self.obj = obj
+
+	def __lt__(self, other):
+		return self.compare(self.obj, other.obj) < 0
+
+	def __gt__(self, other):
+		return self.compare(self.obj, other.obj) > 0
+
+	def __eq__(self, other):
+		return self.compare(self.obj, other.obj) == 0
+
+	def __le__(self, other):
+		return self.compare(self.obj, other.obj) <= 0
+
+	def __ge__(self, other):
+		return self.compare(self.obj, other.obj) >= 0
+
+	def __ne__(self, other):
+		return self.compare(self.obj, other.obj) != 0
+
 	def test(self, candidate, reference):
 		if candidate[0].isalpha() and reference[0].isalpha():
 			return self.compare(candidate, reference)
@@ -64,12 +85,18 @@ class VersionCmp:
 		return -1 if a < b else 1
 
 
+def cmp_to_key():
+	return VersionCmp
+
+
 class PackageInfo:
 	def __init__(self):
-		self.name = ""
-		self.infopage = ""
-		self.candidate_urls = {}
-		self.urls = {}
+		self.name = ""           # package name
+		self.filter = ""         # version-based filter passed by the user (if any)
+		self.versions = []       # list of versions found
+		self.infopages = []      # URL where further package details are given
+		self.urls = []           # candidate urls
+		self.best = -1           # index of best choice
 
 
 class RPMFind_Parser(HTMLParser):
@@ -80,6 +107,8 @@ class RPMFind_Parser(HTMLParser):
 		self.tags = []
 		self.attrs = []
 		self.names = []
+		self.versions = []
+		self.releases = []
 		self.infopages = []
 		self.candidates = {}
 		HTMLParser.__init__(self)
@@ -96,19 +125,26 @@ class RPMFind_Parser(HTMLParser):
 		if len(self.tags) and self.tags[-1] == "a" and data.find(".rpm") >= 0 and data.find(".src.rpm") < 0:
 			href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
 			self.candidates[data] = href
-		elif len(self.tags) and self.tags[-1] == "a" and data.find(".html") >= 0:
+		elif len(self.tags) and self.tags[-1] == "a" and data.find(".html") >= 0 and data.find(".src.html") < 0:
 			# self.attrs[-1] = [("href", "\\'/linux/RPM/fedora/....html\\'")]
 			href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
 			self.infopages.append(href)
 		elif len(self.tags) and self.tags[-1] == "td" and data.find("Name:") >= 0:
 			pkgname = data.replace("Name:", "").strip()
 			self.names.append(pkgname)
+		elif len(self.tags) and self.tags[-1] == "td" and data.find("Version:") >= 0:
+			pkgversion = data.replace("Version:", "").strip()
+			self.versions.append(pkgversion)
+		elif len(self.tags) and self.tags[-1] == "td" and data.find("Release:") >= 0:
+			pkgrelease = data.replace("Release:", "").strip()
+			self.releases.append(pkgrelease)
 
 	def get_pkginfo(self, baseuri=""):
 		info = PackageInfo()
 		info.name = "" if len(self.names) == 0 else self.names[0]
-		info.infopage = "" if len(self.infopages) == 0 else self.infopages[0]
-		info.candidate_urls = dict([(k,baseuri+self.candidates[k]) for k in self.candidates.keys()])
+		info.infopages = list(self.infopages)
+		info.versions = list(["{0}.{1}".format(i[0],i[1]) for i in zip(self.versions, self.releases)])
+		info.urls = [baseuri+self.candidates[k] for k in self.candidates.keys()]
 		return info
 
 
@@ -120,7 +156,7 @@ class RPMFinder:
 		'''
 		Searches rpmfind.net for a given file. Arch and distro can
 		be provided to narrow the search scope. Returns the package
-		name on success or an empty string if no matches were found.
+		info on success or None if no matches were found.
 		'''
 		self.path = path
 		self.arch = arch
@@ -128,46 +164,62 @@ class RPMFinder:
 		self.distrocode = distrocode
 
 		requested_archs = self.arch.split(",")
-		for i,arch in enumerate(requested_archs):
+		for archnum,arch in enumerate(requested_archs):
 			pkginfo = self.__search_rpmfind_net(arch)
-			matches = self.__filter_rpmfind_net(pkginfo.candidate_urls.keys(), pkginfo.name, arch)
-			if len(matches) == 0 and i == len(requested_archs)-1:
+			indexes = self.__filter_by_name(pkginfo.urls, pkginfo.name, arch)
+			if len(indexes) == 0 and archnum == len(requested_archs)-1:
 				# User possibly requested more than one architecture (e.g., "noarch,x86_64")
 				# and we had no exact package name matches. Since the RPM database holds aliases
 				# for several packages we must give a second chance to the results returned
 				# by our call to search_rpmfind_net().
-				matches = pkginfo.candidate_urls.keys()
-			if len(matches) > 0:
-				if any(op in self.path for op in [">", "<", "="]):
-					op, version = self.__get_op_and_version()
-					for pkgname in self.__filter(matches, op, version, pkginfo.name, arch):
-						pkginfo.urls[pkgname] = pkginfo.candidate_urls[pkgname]
-					if len(pkginfo.urls):
-						return pkginfo
-				else:
-					for pkgname in matches:
-						pkginfo.urls[pkgname] = pkginfo.candidate_urls[pkgname]
-					return pkginfo
+				indexes = range(0,len(pkginfo.urls))
+			if len(indexes) == 0:
+				continue
+
+			if any(op in self.path for op in [">", "<", "="]):
+				op, version = self.__path_op_and_version()
+				pkginfo.filter = "{0} {1}".format(op, version)
+				for i in self.__filter_by_version(pkginfo, indexes, op, version, arch):
+					if pkginfo.best < 0 or VersionCmp(None).test(pkginfo.versions[best], pkginfo.versions[i]) > 0:
+						pkginfo.best = i
+			else:
+				# Not sure what's best to do other than returning the first match.
+				pkginfo.best = 0
+			if pkginfo.best >= 0:
+				return pkginfo
 		return None
 
-	def __filter(self, matches, op, version, name, arch):
-		filtered = []
-		for match in matches:
-			pkg_version = match.replace(name, "").replace("{0}.{1}.rpm".format(self.distrocode, arch), "").strip("-").strip(".")
-			vcmp = VersionCmp()
-			if op == ">" and vcmp.test(pkg_version, version) > 0:
-				filtered.append(match)
-			elif op == ">=" and vcmp.test(pkg_version, version) >= 0:
-				filtered.append(match)
-			elif op == "=" and vcmp.test(pkg_version, version) == 0:
-				filtered.append(match)
-			elif op == "<" and vcmp.test(pkg_version, version) < 0:
-				filtered.append(match)
-			elif op == "<=" and vcmp.test(pkg_version, version) <= 0:
-				filtered.append(match)
-		return filtered
+	def __filter_by_name(self, pkgnames, name, arch):
+		# Compile a regex that catches package names derived from the basename given by self.path.
+		# Example: perl-DBICx when perl-DBI is wanted.
+		regex = re.compile(r"{0}\-[0-9]+.*{1}.{2}.rpm".format(name, self.distrocode, arch))
+		indexes = []
+		for i,pkgname in enumerate(pkgnames):
+			if regex.match(os.path.basename(pkgname)):
+				indexes.append(i)
+		return indexes
 
-	def __get_op_and_version(self):
+	def __filter_by_version(self, pkginfo, indexes, op, version, arch):
+		filtered_indexes = []
+		for i in indexes:
+			match = pkginfo.urls[i]
+			pkg_version = os.path.basename(match).replace(pkginfo.name, "")
+			pkg_version = pkg_version.replace("{0}.{1}.rpm".format(self.distrocode, arch), "")
+			pkg_version = pkg_version.strip("-").strip(".")
+			vcmp = VersionCmp(None)
+			if op == ">" and vcmp.test(pkg_version, version) > 0:
+				filtered_indexes.append(i)
+			elif op == ">=" and vcmp.test(pkg_version, version) >= 0:
+				filtered_indexes.append(i)
+			elif op == "=" and vcmp.test(pkg_version, version) == 0:
+				filtered_indexes.append(i)
+			elif op == "<" and vcmp.test(pkg_version, version) < 0:
+				filtered_indexes.append(i)
+			elif op == "<=" and vcmp.test(pkg_version, version) <= 0:
+				filtered_indexes.append(i)
+		return filtered_indexes
+
+	def __path_op_and_version(self):
 		if ">=" in self.path:
 			return ">=", self.path.split(">=")[1].strip()
 		elif ">" in self.path:
@@ -189,19 +241,10 @@ class RPMFinder:
 		htmlparser = RPMFind_Parser()
 		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, query), "-O", "-"])
 		htmlparser.feed(str(html))
-		html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, htmlparser.get_pkginfo().infopage), "-O", "-"])
-		htmlparser.feed(str(html))
+		for infopage in htmlparser.get_pkginfo().infopages:
+			html = subprocess.check_output(["wget", "--quiet", "{0}{1}".format(self.baseuri, infopage), "-O", "-"])
+			htmlparser.feed(str(html))
 		return htmlparser.get_pkginfo(self.baseuri)
-
-	def __filter_rpmfind_net(self, pkgnames, name, arch):
-		# Compile a regex that catches package names derived from the basename given by self.path.
-		# Example: perl-DBICx when perl-DBI is wanted.
-		regex = re.compile(r"{0}\-[0-9]+.*{1}.{2}.rpm".format(name, self.distrocode, arch))
-		result = []
-		for pkgname in pkgnames:
-			if regex.match(pkgname):
-				result.append(pkgname)
-		return result
 
 
 def main():
@@ -217,9 +260,11 @@ def main():
 		sys.exit(1)
 
 	pkginfo = RPMFinder().find(args.path, args.arch, args.distroname, args.distrocode)
-	if pkginfo:
-		for pkgname in pkginfo.urls:
-			print("{0} # {1}".format(pkginfo.name, pkginfo.urls[pkgname]))
+	if pkginfo and pkginfo.best >= 0:
+		if len(pkginfo.filter):
+			print("{0} {1} # {2}".format(pkginfo.name, pkginfo.filter, pkginfo.urls[pkginfo.best]))
+		else:
+			print("{0} # {1}".format(pkginfo.name, pkginfo.urls[pkginfo.best]))
 
 if __name__ == "__main__":
 	main()

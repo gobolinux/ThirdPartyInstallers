@@ -362,7 +362,7 @@ function take_dependency_from_path() {
         # What we do now is to query remote RPM/DEB databases to find which package hosts the
         # dependency file.
 
-        Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $originalpath"
+        Log_Normal "Searching the remote $(thirdparty_backend) database for the package providing $originalpath"
         depname=$(thirdparty_search_remotedb "$originalpath" "$arch" "$distro" "$distrocode")
         if [ "$depname" ]
         then
@@ -401,14 +401,18 @@ function lookup_pkgname() {
     fi
 
     # Query the remote database for $pkgname
-    Log_Normal "Searching the remote $(thirdparty_backend) database for the package hosting $pkgname"
+    Log_Normal "Searching the remote $(thirdparty_backend) database for the package providing $pkgname"
     local arch=$(thirdparty_arch "$inputfile")
     local distro=$(thirdparty_distribution_name "$inputfile")
     local distrocode=$(thirdparty_distribution_code "$inputfile")
     local depname=$(thirdparty_search_remotedb "$pkgname" "$arch" "$distro" "$distrocode")
     if [ "$depname" ]
     then
-        echo "$depname" && return 0
+        local originalname=$(echo $depname | cut -d" " -f1)
+        local prettyname="$(GuessProgramCase $originalname)"
+        local result=$(echo "$depname" | sed "s,$originalname,$prettyname,1")
+        Log_Verbose "$result"
+        echo "$result" && return 0
     fi
 
     return 1
