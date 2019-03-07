@@ -491,6 +491,21 @@ function prepare_program_entry() {
     target="$goboPrograms/$programname/$programversion"
 }
 
+function has_mixed_packages() {
+	grep -vq "\.pkg.tar" <<< "$@"
+	local has_arch=$?
+
+	grep -vq "\.deb" <<< "$@"
+	local has_deb=$?
+
+	grep -vq "\.rpm" <<< "$@"
+	local has_rpm=$?
+
+	# only one of these should be 1 for mutual exclusivity
+	[ "$(( $has_arch + $has_deb + $has_rpm ))" != "1" ]
+}
+
+
 ### Operation #################################################################
 
 Is_Writable "${goboPrograms}" || Verify_Superuser
@@ -501,13 +516,15 @@ else verbose=
 fi
 
 # Sanity checks, then import the backend to handle the input package(s)
-if echo "$@" | grep -q "\.rpm" && echo "$@" | grep -q "\.deb"
-then Die "Error: cannot handle both RPM and DEB files in one shot."
+if has_mixed_packages $@
+then Die "Error: cannot handle package archives of more than one format in one shot."
 elif echo "$@" | grep -q "\.rpm"
 then Import RPM
 elif echo "$@" | grep -q "\.deb"
 then Import DEB
-else Die "Error: this tool can only handle RPM and DEB archives."
+elif echo "$@" | grep -q "\.pkg.tar"
+then Import Arch
+else Die "Error: this tool can only handle RPM, DEB, and Arch Linux archives."
 fi
 
 # The inputfiles array holds the full path of all RPM/DEB input files

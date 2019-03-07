@@ -1,0 +1,113 @@
+#!/bin/bash (source)
+
+# ThirdPartyInstallers Arch backend
+
+function get_pkginfo_field() {
+    local file="$1"
+    local field="$2"
+    tar --to-stdout -xf "$file" .PKGINFO | grep '^'"$field"'' | awk -F' = ' '{print $2}' | sed -e 's/\([^><]\)=.*/\1/g'
+}
+
+function thirdparty_backend() {
+    echo "Arch"
+}
+
+function thirdparty_arch() {
+    local file="$1"
+    local arch=$(get_pkginfo_field "$file" arch)
+    if [ "$arch" = "all" ]
+    then echo "noarch"
+    else echo "$arch"
+    fi
+}
+
+function thirdparty_distribution() {
+    # This isn't given by .PKGINFO. Closest we get is the packager field
+    echo "Unknown"
+}
+
+function thirdparty_distribution_name() {
+    # This isn't given by .PKGINFO
+    echo "Unknown"
+}
+
+function thirdparty_distribution_code() {
+    # This isn't given by .PKGINFO
+    echo "Unknown"
+}
+
+function thirdparty_dependencies() {
+    local file="$1"
+    local deps=$(get_pkginfo_field "$file" depend)
+
+    # The Depends fields contains a comma-separated list of dependencies. The range with the required
+    # versions, when available, is output between parenthesis. To make the Dependencies output match the
+    # format used by GoboLinux, we use a newline separator and remove all parenthesis characters found.
+
+    echo "$deps" | sed 's/, /\n/g' | tr -d "()"
+}
+
+function thirdparty_description() {
+    local file="$1"
+    get_pkginfo_field "$file" pkgdesc
+}
+
+function thirdparty_filenames() {
+    local file="$1"
+    local contents=$(tar -tf "$file" | grep -Ev '^(\.MTREE|\.BUILDINFO|\.PKGINFO)' 2>/dev/null)
+
+    echo "$contents"
+}
+
+function thirdparty_license() {
+    local file="$1"
+    get_pkginfo_field "$file" license
+}
+
+function thirdparty_name() {
+    local file="$1"
+    get_pkginfo_field "$file" pkgname
+}
+
+function thirdparty_version() {
+    local file="$1"
+    local version=$(get_pkginfo_field "$file" pkgver)
+    # The format is: [epoch:]upstream_version[-arch_revision]
+    # We want to output the [epoch:]upstream_version part
+    echo "$version" | cut -d: -f1-2 | rev | cut -d- -f2- | rev
+}
+
+function thirdparty_release() {
+    local file="$1"
+    local version=$(get_pkginfo_field "$file" pkgver)
+    # The format is: [epoch:]upstream_version[-arch_revision]
+    # We want to output the [-debian_revision] part
+    # Let's make the absence of a arch_revision is equivalent to a arch_revision of 0.
+    if echo "$version" | grep -q -- "-"
+    then echo "$version" | rev | cut -d- -f1 | rev
+    else echo "0"
+    fi
+}
+
+function thirdparty_summary() {
+    local file="$1"
+    get_pkginfo_field "$file" pkgdesc
+}
+
+function thirdparty_url() {
+    local file="$1"
+    get_pkginfo_field "$file" url
+}
+
+function thirdparty_search_remotedb() {
+    local path="$1"
+    local arch="$2"
+    local distro="$3"
+    false
+}
+
+function thirdparty_uncompress() {
+    local file="$1"
+    Log_Normal "Extracting Arch payload from $file."
+    tar -x --exclude={.MTREE,.BUILDINFO,.PKGINFO} -f "$file" 2>/dev/null
+}
