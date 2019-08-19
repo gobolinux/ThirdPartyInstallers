@@ -79,10 +79,10 @@ function thirdparty_search_remotedb() {
 
 function thirdparty_uncompress() {
     local rpmfile="$1"
-    local payload_compressor=$(rpminfo --compressor "$rpmfile")
-    local cpiofile=$(basename "$rpmfile").cpio${payload_compressor:+.$payload_compressor}
+    local payload_compressor="$(rpminfo --compressor "$rpmfile")"
+    local cpiofile="$(basename "$rpmfile").cpio${payload_compressor:+.$payload_compressor}"
     
-    Log_Normal "Extracting RPM payload."
+    Log_Normal "Extracting RPM payload from $rpmfile."
     rpm2cpio < "$rpmfile" > "$cpiofile"
 
     if [ "$payload_compressor" = "xz" ]
@@ -97,7 +97,7 @@ function thirdparty_uncompress() {
         cpiofile=$(basename "$rpmfile").cpio
     fi
 
-    Log_Normal "Extracting CPIO archive."
+    Log_Normal "Extracting CPIO archive from $cpiofile."
     cpio --quiet -d -i < "$cpiofile"
     rm -f -- "$cpiofile"
 }

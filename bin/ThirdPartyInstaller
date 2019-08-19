@@ -31,7 +31,7 @@ function pretty_name() {
 
 function fetch_package() {
     local inputfile="$1"
-    local filename=$(basename "$inputfile")
+    local filename="$(basename "$inputfile")"
     if Is_URL "$inputfile"
     then
         if wget --help | grep -q "no-check-certificate"
@@ -41,7 +41,7 @@ function fetch_package() {
         ${wget_cmd} -c "${inputfile}" -O "${goboTemp}/${filename}" || Die "Error downloading package."
         echo "${goboTemp}/${filename}"
     else
-        echo "$(readlink -f $inputfile)"
+        echo "$(readlink -f "$inputfile")"
     fi
 }
 
@@ -52,7 +52,7 @@ function uncompress_package() {
 
 function determine_flattening_level() {
     local rootdirs="bin$\|sbin$\|lib$\|lib64$\|libexec$\|include$\|share$"
-    local filenames=$(for i in "${inputfiles[@]}"; do thirdparty_filenames $i; done)
+    local filenames=$(for i in "${inputfiles[@]}"; do thirdparty_filenames "$i"; done)
 
     if echo "$filenames" | grep -q "/opt/$rootdirs"
     then
@@ -275,17 +275,17 @@ function populate_resources() {
     # around.
 
     [ -e Resources/PackageSource ] && echo >> Resources/PackageSource
-    echo "[File] $(basename $inputfile)"   >> Resources/PackageSource
+    echo "[File] $(basename "$inputfile")" >> Resources/PackageSource
     echo "[Distribution] $distro"          >> Resources/PackageSource
 
     if [ "$description" ]
     then
-        [ -e Resources/Description ] && echo ""                   >> Resources/Description
-        echo "[Name] $(thirdparty_name $inputfile)"               >> Resources/Description
-        echo "[Summary] $(thirdparty_summary $inputfile)"         >> Resources/Description
-        echo "[License] $(thirdparty_license $inputfile)"         >> Resources/Description
-        echo "[Description] $(thirdparty_description $inputfile)" >> Resources/Description
-        echo "[Homepage] $(thirdparty_url $inputfile)"            >> Resources/Description
+        [ -e Resources/Description ] && echo ""                     >> Resources/Description
+        echo "[Name] $(thirdparty_name "$inputfile")"               >> Resources/Description
+        echo "[Summary] $(thirdparty_summary "$inputfile")"         >> Resources/Description
+        echo "[License] $(thirdparty_license "$inputfile")"         >> Resources/Description
+        echo "[Description] $(thirdparty_description "$inputfile")" >> Resources/Description
+        echo "[Homepage] $(thirdparty_url "$inputfile")"            >> Resources/Description
     fi
 
     Log_Normal "Processing dependencies."
@@ -455,21 +455,21 @@ function is_basic_symbol() {
 
 function deduce_program_name() {
     local inputfile="$1"
-    local name=$(thirdparty_name "$inputfile")
-    echo $name
+    local name="$(thirdparty_name "$inputfile")"
+    echo "$name"
 }
 
 function prepare_program_entry() {
     local inputfile="$1"
 
-    if [ ${#inputfiles[@]} -gt 1 ] && Is_Entry "app-name" && [ ! -z "$programname" ]
+    if [ "${#inputfiles[@]}" -gt 1 ] && Is_Entry "app-name" && [ ! -z "$programname" ]
     then
         # We have already prepared this program's entry on /Programs
         return
     fi
     if Is_Entry "app-name"
     then programname=$(Entry "app-name")
-    else programname="$(deduce_program_name $inputfile)"
+    else programname="$(deduce_program_name "$inputfile")"
     fi
     if Is_Entry "version-number"
     then programversion=$(Entry "version-number")
@@ -539,9 +539,9 @@ do
 done
 for entry in "${inputfiles_[@]}"
 do
-    inputfile=$(fetch_package "$entry")
+    inputfile="$(fetch_package "$entry")"
     inputfiles+=( "$inputfile" )
-    inputnames+=( "$(thirdparty_name $inputfile)" )
+    inputnames+=( "$(thirdparty_name "$inputfile")" )
 done
 inputfilescount=$(( "${#inputfiles[@]}" -1 ))
 
@@ -562,7 +562,7 @@ for i in $(seq 0 $inputfilescount)
 do
     inputfile="${inputfiles[$i]}"
 
-    Log_Normal "Processing $(basename $inputfile)"
+    Log_Normal "Processing $(basename "$inputfile")"
     prepare_program_entry "$inputfile"
     Quiet pushd "$target" || Die "Could not enter $target"
 
