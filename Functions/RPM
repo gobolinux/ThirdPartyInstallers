@@ -85,6 +85,9 @@ function thirdparty_uncompress() {
     Log_Normal "Extracting RPM payload from $rpmfile."
     rpm2cpio < "$rpmfile" > "$cpiofile"
 
+    # Do not trust 100% what RPM says about the payload compressor
+    file "$cpiofile" | grep -q "ASCII cpio archive (SVR4 with no CRC)" && payload_compressor=""
+
     if [ "$payload_compressor" = "xz" ]
     then
         Log_Normal "Decompressing $payload_compressor payload."
