@@ -18,6 +18,19 @@
 #include <rpm/pkgio.h>
 #include <rpm/rpmds.h>
 
+#ifndef _RPMVSF_NODIGESTS
+#define _RPMVSF_NODIGESTS    0x30300
+#endif
+#ifndef _RPMVSF_NOSIGNATURES
+#define _RPMVSF_NOSIGNATURES 0xc0c00
+#endif
+#ifndef _RPMVSF_NOPAYLOAD
+#define _RPMVSF_NOPAYLOAD    0xf0000
+#endif
+#ifndef _RPMVSF_NOHEADER
+#define _RPMVSF_NOHEADER     0x00f00
+#endif
+
 struct optinfo {
 	const char *name;
 	const char *desc;
