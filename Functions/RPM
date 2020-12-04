@@ -93,6 +93,13 @@ function thirdparty_uncompress() {
         Log_Normal "Decompressing $payload_compressor payload."
         xz -d "$cpiofile"
         cpiofile=$(basename "$rpmfile").cpio
+    elif [ "$payload_compressor" = "zstd" ]
+    then
+        Log_Normal "Decompressing $payload_compressor payload."
+        tmp_cpiofile="$(basename "$rpmfile").cpio.zst"
+        mv "$cpiofile" "$tmp_cpiofile"
+        zstd --rm -d "$tmp_cpiofile"
+        cpiofile=$(basename "$rpmfile").cpio
     elif [ "$payload_compressor" = "lzma" ]
     then
         Log_Normal "Decompressing $payload_compressor payload."
