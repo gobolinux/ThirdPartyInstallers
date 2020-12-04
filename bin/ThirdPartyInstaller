@@ -576,10 +576,15 @@ do
     fi
 done
 
+# Settings
+if [ ! -e /Programs/$programname/Current || $(Entry "symlink") != "no" ]
+then
+    [ -d "$target/Resources/Defaults/Settings" ] && UpdateSettings "$programname" "$programversion"
+fi
+
 # Symlinking
 if [ $(Entry "symlink") != "no" ]
 then
-    [ -d "$target/Resources/Defaults/Settings" ] && UpdateSettings "$programname" "$programversion"
     SymlinkProgram "$programname" "$programversion"
 fi
 
