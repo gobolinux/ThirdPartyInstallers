@@ -577,7 +577,7 @@ do
 done
 
 # Settings
-if [ ! -e /Programs/$programname/Current || $(Entry "symlink") != "no" ]
+if [ ! -e /Programs/$programname/Current ] || [ $(Entry "symlink") != "no" ]
 then
     [ -d "$target/Resources/Defaults/Settings" ] && UpdateSettings "$programname" "$programversion"
 fi
