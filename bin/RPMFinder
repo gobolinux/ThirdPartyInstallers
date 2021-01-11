@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# vim: set noexpandtab tabstop=4 shiftwidth=4 autoindent smartindent:
+# vim: set expandtab tabstop=4 shiftwidth=4
 
 # Searches over the network to find out which RPM package distributes
 # a given file.
@@ -11,8 +11,10 @@
 import os
 import re
 import sys
+import gzip
 import argparse
 import subprocess
+import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 
@@ -148,9 +150,72 @@ class RPMFind_Parser(HTMLParser):
         return info
 
 
-class RPMFinder:
+class Generic_HTTP_Parser(HTMLParser):
+    '''
+    Parses the HTML from generic remote HTTP directory listings
+    '''
     def __init__(self):
-        self.baseuri = "http://rpmfind.net"
+        self.tags = []
+        self.attrs = []
+        self.names = []
+        self.hrefs = []
+        self.has_repodata = False
+        self.repodata_xml = ""
+        HTMLParser.__init__(self)
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.append(tag)
+        self.attrs.append(attrs)
+
+    def handle_endtag(self, tag):
+        self.tags.pop()
+        self.attrs.pop()
+
+    def handle_data(self, data):
+        if len(self.tags) and self.tags[-1] == "a" and data.find(".rpm") >= 0 and data.find(".src.rpm") < 0:
+            href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
+            self.names.append(os.path.basename(href).strip())
+            self.hrefs.append(href)
+        elif len(self.tags) and self.tags[-1] == "a" and data.find("repodata/") >= 0:
+            self.has_repodata = True
+        elif self.has_repodata and data.find("-primary.xml.gz") >= 0:
+            href = self.attrs[-1][0][1].replace("\\", "").replace("'", "")
+            self.repodata_xml = href
+
+    def parse_repodata(self, xmldata, baseuri, wanted_name):
+        info = PackageInfo()
+        info.name = wanted_name
+        info.versions = []
+        info.urls = []
+        ns = {
+            "filelist": "http://linux.duke.edu/metadata/filelists",
+            "common": "http://linux.duke.edu/metadata/common",
+            "rpm": "http://linux.duke.edu/metadata/rpm",
+        }
+        root = ET.fromstring(xmldata)
+        for pkg in root.findall(".//common:package", namespaces=ns):
+            try:
+                name = pkg.find("common:name", namespaces=ns).text
+                version = pkg.find("common:version", namespaces=ns).get("ver")
+                href = pkg.find("common:location", namespaces=ns).get("href")
+            except:
+                raise
+            if name == wanted_name:
+                info.versions.append(version)
+                info.urls.append(f"{baseuri}/{href}")
+        return info
+
+    def get_pkginfo(self, baseuri=""):
+        info = PackageInfo()
+        info.name = "" if len(self.names) == 0 else self.names[0]
+        info.versions = ["unknown"] * len(self.hrefs)
+        info.urls = self.hrefs
+        return info
+
+
+class RPMFinder:
+    def __init__(self, baseuri):
+        self.baseuri = baseuri
 
     def find(self, path, arch, distroname, distrocode):
         '''
@@ -163,9 +228,11 @@ class RPMFinder:
         self.distroname = distroname.replace(" ", "+")
         self.distrocode = distrocode
 
+        search_fn = self.__search_generic_remoteserver if self.baseuri.find("rpmfind") < 0 else self.__search_rpmfind_net
+
         requested_archs = self.arch.split(",")
         for archnum,arch in enumerate(requested_archs):
-            pkginfo = self.__search_rpmfind_net(arch)
+            pkginfo = search_fn(arch)
             if pkginfo is None:
                 continue
             indexes = self.__filter_by_name(pkginfo.urls, pkginfo.name, arch)
@@ -173,7 +240,7 @@ class RPMFinder:
                 # User possibly requested more than one architecture (e.g., "noarch,x86_64")
                 # and we had no exact package name matches. Since the RPM database holds aliases
                 # for several packages we must give a second chance to the results returned
-                # by our call to search_rpmfind_net().
+                # by our call to search_fn().
                 indexes = range(0,len(pkginfo.urls))
             if len(indexes) == 0:
                 continue
@@ -257,6 +324,27 @@ class RPMFinder:
                 sys.stderr.write("error retrieving url {0}{1}\n".format(self.baseuri, infopage))
         return htmlparser.get_pkginfo(self.baseuri)
 
+    def __search_generic_remoteserver(self, arch):
+        htmlparser = Generic_HTTP_Parser()
+        try:
+            html = subprocess.check_output(["wget", "--quiet", self.baseuri, "-O", "-"])
+            htmlparser.feed(str(html))
+        except subprocess.CalledProcessError:
+            # Fatal error
+            sys.stderr.write("error retrieving url {0}\n".format(self.baseuri))
+            return None
+        if htmlparser.has_repodata:
+            # Search for package information on {self.baseuri}/repodata/*primary.xml.gz
+            html = subprocess.check_output(["wget", "--quiet", f"{self.baseuri}/repodata", "-O", "-"])
+            htmlparser.feed(str(html))
+            if len(htmlparser.repodata_xml):
+                # Retrieve package info from the xml.gz file
+                xmlgz = subprocess.check_output(["wget", "--quiet", f"{self.baseuri}/repodata/{htmlparser.repodata_xml}", "-O", "-"])
+                xml = gzip.decompress(xmlgz)
+                return htmlparser.parse_repodata(xml, self.baseuri, self.path)
+        # Fallback
+        return htmlparser.get_pkginfo(self.path)
+
 
 def main():
     argparser = argparse.ArgumentParser(argument_default="")
@@ -264,13 +352,17 @@ def main():
     argparser.add_argument("--arch", type=str, help="Architecture (optional)")
     argparser.add_argument("--distroname", type=str, help="Distribution name (optional)")
     argparser.add_argument("--distrocode", type=str, help="Distribution code (optional)")
+    argparser.add_argument("--server", type=str, help="Remote HTTP/HTTPS/FTP directory where to search packages (optional)")
     args = argparser.parse_args()
 
     if len(args.path) == 0:
         argparser.print_help()
         sys.exit(1)
 
-    pkginfo = RPMFinder().find(args.path, args.arch, args.distroname, args.distrocode)
+    if len(args.server) == 0:
+        args.server = "http://rpmfind.net"
+
+    pkginfo = RPMFinder(args.server).find(args.path, args.arch, args.distroname, args.distrocode)
     if pkginfo and pkginfo.best >= 0:
         if len(pkginfo.filter):
             print("{0} {1} # {2}".format(pkginfo.name, pkginfo.filter, pkginfo.urls[pkginfo.best]))

@@ -106,7 +106,9 @@ function thirdparty_url() {
 function thirdparty_search_remotedb() {
     local path="$1"
     local arch="$2"
-    local distro="$3"
+    local distroname="$3"
+    local distrocode="$4"
+    local remoteserver="$5"
     false
 }
 

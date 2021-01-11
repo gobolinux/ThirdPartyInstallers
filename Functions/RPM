@@ -71,10 +71,11 @@ function thirdparty_search_remotedb() {
     local arch="$2"
     local distroname="$3"
     local distrocode="$4"
+    local remoteserver="$5"
     if [ "$arch" = "noarch" ]
     then arch="${arch},$(uname -m)"
     fi
-    RPMFinder --path="$path" --arch="$arch" --distroname="$distroname" --distrocode="$distrocode"
+    RPMFinder --path="$path" --arch="$arch" --distroname="$distroname" --distrocode="$distrocode" --server="$remoteserver"
 }
 
 function thirdparty_uncompress() {
